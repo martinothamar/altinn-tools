@@ -40,6 +40,6 @@ namespace AltinnReStorage.Services
         /// <summary>
         /// Gets the metadata backup for a data element based on the restore timestamp.
         /// </summary>
-        public Task<DataElement> GetDataElementBackup(string instanceGuid, string dataGuid, string restoreTimestamp = "");
+        public Task<DataElement> GetDataElementBackup(string instanceGuid, string dataGuid, string restoreTimestamp);
     }
 }
