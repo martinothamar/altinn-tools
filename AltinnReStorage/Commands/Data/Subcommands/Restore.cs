@@ -154,8 +154,20 @@ namespace AltinnReStorage.Commands.Data
             }
             catch (Exception e)
             {
+                Console.WriteLine("-----------------------------------------------------------------------");
+                Console.WriteLine($"An error occured when restoring data element. See exception for more details.");
+                Console.WriteLine("-----------------------------------------------------------------------");
                 Console.WriteLine(e);
             }
+            finally
+            {
+                CleanUp();
+            }
+        }
+
+        private void CleanUp()
+        {
+            InstanceId = InstanceGuid = null;
         }
     }
 }

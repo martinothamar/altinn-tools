@@ -131,45 +131,57 @@ namespace AltinnReStorage.Commands.Data
                 instanceGuid = InstanceGuid ?? InstanceId.Split('/')[1];
             }
 
-            if (ListVersions && (string.IsNullOrEmpty(Org) || string.IsNullOrEmpty(App) || string.IsNullOrEmpty(instanceGuid)))
+            try
             {
-                Console.WriteLine("Please provide org, app and instanceGuid to retrieve previous versions when listing deleted data elements.");
-                return;
-            }
-
-            if (!ExcludeMetadata)
-            {
-                string metadata = await GetMetadata(DataGuid, instanceGuid);
-                metadata = string.IsNullOrEmpty(metadata) ? "No metadata found." : metadata;
-                Console.WriteLine("-----------------------------------------------------------------------");
-                Console.WriteLine($"Metadata for data element: {instanceGuid}/{DataGuid}");
-                Console.WriteLine("-----------------------------------------------------------------------");
-                Console.WriteLine(metadata);
-                Console.WriteLine(string.Empty);
-            }
-
-            if (ListVersions)
-            {
-                List<string> versions = await GetVersions(Org, App, instanceGuid, DataGuid);
-                Console.WriteLine("-----------------------------------------------------------------------");
-                Console.WriteLine($"Versions of data element: {instanceGuid}/{DataGuid}");
-                Console.WriteLine("-----------------------------------------------------------------------");
-                if (versions.Count == 0)
+                if (ListVersions && (string.IsNullOrEmpty(Org) || string.IsNullOrEmpty(App) || string.IsNullOrEmpty(instanceGuid)))
                 {
-                    Console.WriteLine($"No version history found.");
+                    Console.WriteLine("Please provide org, app and instanceGuid to retrieve previous versions when listing deleted data elements.");
+                    return;
                 }
-                else
+
+                if (!ExcludeMetadata)
                 {
-                    foreach (string version in versions)
+                    string metadata = await GetMetadata(DataGuid, instanceGuid);
+                    metadata = string.IsNullOrEmpty(metadata) ? "No metadata found." : metadata;
+                    Console.WriteLine("-----------------------------------------------------------------------");
+                    Console.WriteLine($"Metadata for data element: {instanceGuid}/{DataGuid}");
+                    Console.WriteLine("-----------------------------------------------------------------------");
+                    Console.WriteLine(metadata);
+                    Console.WriteLine(string.Empty);
+                }
+
+                if (ListVersions)
+                {
+                    List<string> versions = await GetVersions(Org, App, instanceGuid, DataGuid);
+                    Console.WriteLine("-----------------------------------------------------------------------");
+                    Console.WriteLine($"Versions of data element: {instanceGuid}/{DataGuid}");
+                    Console.WriteLine("-----------------------------------------------------------------------");
+                    if (versions.Count == 0)
                     {
-                        Console.WriteLine(version);
+                        Console.WriteLine($"No version history found.");
                     }
+                    else
+                    {
+                        foreach (string version in versions)
+                        {
+                            Console.WriteLine(version);
+                        }
+                    }
+
+                    Console.WriteLine(string.Empty);
                 }
-
-                Console.WriteLine(string.Empty);
             }
-
-            CleanUp();
+            catch (Exception e)
+            {
+                Console.WriteLine("-----------------------------------------------------------------------");
+                Console.WriteLine($"An error occured when retrieving information about data element. See exception for more details.");
+                Console.WriteLine("-----------------------------------------------------------------------");
+                Console.WriteLine(e);
+            }
+            finally
+            {
+                CleanUp();
+            }
         }
 
         private async Task<string> GetMetadata(string dataGuid, string instanceGuid)

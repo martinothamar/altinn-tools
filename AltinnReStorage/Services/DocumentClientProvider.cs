@@ -65,12 +65,16 @@ namespace AltinnReStorage.Services
                     documentClient = new DocumentClient(new Uri($"https://altinn-{environment}-cosmos-db.documents.azure.com:443/"), config.PrimaryKey, connectionPolicy);
                     _clients.Add(environment, documentClient);
                 }
+                else
+                {
+                    documentClient = null;
+                }
 
                 client.Dispose();
             }
             catch (Exception e)
             {
-                Console.WriteLine(e);
+                throw e;
             }
 
             return documentClient;

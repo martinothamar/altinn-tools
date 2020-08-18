@@ -45,7 +45,7 @@ namespace AltinnReStorage.Commands.Settings
                     _accessTokenService.InvalidateCredentials();
                 }
 
-                Program.Environment = Environment;
+                Program.Environment = Environment.ToLower();
 
                 Console.WriteLine($"Enviroment updated \n");
             }
