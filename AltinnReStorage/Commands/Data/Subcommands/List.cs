@@ -28,7 +28,7 @@ namespace AltinnReStorage.Commands.Data
             ShowInHelpText = true,
             Description = "InstanceId [instanceOwner.partyId/instanceGuid] for the instance the dataElement is connected to.")]
         [InstanceId]
-        public string InstanceId { get; set; } 
+        public string InstanceId { get; set; }
 
         /// <summary>
         /// Instance guid
@@ -113,21 +113,33 @@ namespace AltinnReStorage.Commands.Data
 
             string instanceGuid = InstanceGuid ?? InstanceId.Split('/')[1];
 
-            switch (DataState.ToLower())
+            try
             {
-                case "deleted":
-                    await ListDataElements(Org, App, instanceGuid, ElementState.Deleted);
-                    break;
-                case "all":
-                    await ListDataElements(Org, App, instanceGuid, ElementState.All);
-                    break;
-                case "active":
-                default:
-                    await ListActiveDataElements(instanceGuid);
-                    break;
+                switch (DataState.ToLower())
+                {
+                    case "deleted":
+                        await ListDataElements(Org, App, instanceGuid, ElementState.Deleted);
+                        break;
+                    case "all":
+                        await ListDataElements(Org, App, instanceGuid, ElementState.All);
+                        break;
+                    case "active":
+                    default:
+                        await ListActiveDataElements(instanceGuid);
+                        break;
+                }
             }
-
-            CleanUp();
+            catch (Exception e)
+            {
+                Console.WriteLine("-----------------------------------------------------------------------");
+                Console.WriteLine($"An error occured when retrieving listing data element. See exception for more details.");
+                Console.WriteLine("-----------------------------------------------------------------------");
+                Console.WriteLine(e);
+            }
+            finally
+            {
+                CleanUp();
+            }
         }
 
         private async Task ListDataElements(string org, string app, string instanceGuid, ElementState state)
@@ -152,29 +164,21 @@ namespace AltinnReStorage.Commands.Data
 
         private async Task ListActiveDataElements(string instanceGuid)
         {
-            try
-            {
-                List<string> dataGuids = await _cosmosService.ListDataElements(instanceGuid);
+            List<string> dataGuids = await _cosmosService.ListDataElements(instanceGuid);
 
-                if (dataGuids.Count > 0)
-                {
-                    Console.WriteLine($"Active data elements for instanceGuid {instanceGuid}:");
-                    foreach (string id in dataGuids)
-                    {
-                        Console.WriteLine("\t" + id);
-                    }
-                }
-                else
-                {
-                    Console.WriteLine($"No active data elements were found for instanceGuid \"{instanceGuid}\"");
-                }
-
-                Console.WriteLine();
-            }
-            catch (Exception e)
+            if (dataGuids.Count > 0)
             {
-                Console.WriteLine(e);
+                Console.WriteLine($"Active data elements for instanceGuid {instanceGuid}:");
+                foreach (string id in dataGuids)
+                {
+                    Console.WriteLine("\t" + id);
+                }
             }
+            else
+            {
+                Console.WriteLine($"No active data elements were found for instanceGuid \"{instanceGuid}\"");
+            }
+
         }
 
         private void CleanUp()

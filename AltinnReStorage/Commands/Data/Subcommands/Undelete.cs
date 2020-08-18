@@ -118,35 +118,47 @@ namespace AltinnReStorage.Commands.Data
                 return;
             }
 
-            if (await _blobService.UndeleteBlob(Org, App, instanceGuid, DataGuid))
+            try
             {
-                DataElement backup = await _blobService.GetDataElementBackup(instanceGuid, DataGuid);
-                if (backup != null && await _cosmosService.SaveDataElement(backup))
+                if (await _blobService.UndeleteBlob(Org, App, instanceGuid, DataGuid))
                 {
-                    Console.WriteLine("-----------------------------------------------------------------------");
-                    Console.WriteLine($"Undelete successful. Data element restored.");
-                    Console.WriteLine(JsonConvert.SerializeObject(backup, Formatting.Indented));
-                    Console.WriteLine("-----------------------------------------------------------------------");
+                    DataElement backup = await _blobService.GetDataElementBackup(instanceGuid, DataGuid);
+                    if (backup != null && await _cosmosService.SaveDataElement(backup))
+                    {
+                        Console.WriteLine("-----------------------------------------------------------------------");
+                        Console.WriteLine($"Undelete successful. Data element restored.");
+                        Console.WriteLine(JsonConvert.SerializeObject(backup, Formatting.Indented));
+                        Console.WriteLine("-----------------------------------------------------------------------");
+                    }
+                    else
+                    {
+                        Console.WriteLine("-----------------------------------------------------------------------");
+                        Console.WriteLine($"Undelete unsuccessful. Data element was not fully restored.");
+                        Console.WriteLine($"Error occured when retrieving backup and writing metadata to cosmos for");
+                        Console.WriteLine($"Please check state manually for: {Org}/{App}/{instanceGuid}/{DataGuid}. ");
+                        Console.WriteLine("-----------------------------------------------------------------------");
+                    }
                 }
                 else
                 {
                     Console.WriteLine("-----------------------------------------------------------------------");
-                    Console.WriteLine($"Undelete unsuccessful. Data element was not fully restored.");
-                    Console.WriteLine($"Error occured when retrieving backup and writing metadata to cosmos for");
+                    Console.WriteLine($"Undelete unsuccessful. Data element was not restored.");
+                    Console.WriteLine($"Error occured when undeleting data element in blob storage.");
                     Console.WriteLine($"Please check state manually for: {Org}/{App}/{instanceGuid}/{DataGuid}. ");
                     Console.WriteLine("-----------------------------------------------------------------------");
                 }
             }
-            else
+            catch (Exception e)
             {
                 Console.WriteLine("-----------------------------------------------------------------------");
-                Console.WriteLine($"Undelete unsuccessful. Data element was not restored.");
-                Console.WriteLine($"Error occured when undeleting data element in blob storage.");
-                Console.WriteLine($"Please check state manually for: {Org}/{App}/{instanceGuid}/{DataGuid}. ");
+                Console.WriteLine($"An error occured when restoring data element. See exception for more details.");
                 Console.WriteLine("-----------------------------------------------------------------------");
+                Console.WriteLine(e);
             }
-
-            CleanUp();
+            finally
+            {
+                CleanUp();
+            }
         }
 
         private void CleanUp()

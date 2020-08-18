@@ -41,6 +41,12 @@ namespace AltinnReStorage.Services
 
             Uri uri = UriFactory.CreateDocumentUri("Storage", "dataElements", dataGuid);
             DocumentClient client = await _clientProvider.GetDocumentClient(Program.Environment);
+
+            if (client == null)
+            {
+                throw new Exception("Unable to create document client. Please check your login credentials.");
+            }
+
             FeedOptions options;
 
             if (!string.IsNullOrEmpty(instanceGuid))
@@ -74,6 +80,11 @@ namespace AltinnReStorage.Services
 
             DocumentClient client = await _clientProvider.GetDocumentClient(Program.Environment);
 
+            if (client == null)
+            {
+                throw new Exception("Unable to create document client. Please check your login credentials.");
+            }
+
             do
             {
                 var feed = await client.ReadDocumentFeedAsync(
@@ -100,6 +111,11 @@ namespace AltinnReStorage.Services
         public async Task<bool> SaveDataElement(DataElement dataElement)
         {
             DocumentClient client = await _clientProvider.GetDocumentClient(Program.Environment);
+            if (client == null)
+            {
+                throw new Exception("Unable to create document client. Please check your login credentials.");
+            }
+
             ResourceResponse<Document> createDocumentResponse = await client.CreateDocumentAsync(_dataCollectionUri, dataElement);
             HttpStatusCode res = createDocumentResponse.StatusCode;
 
@@ -110,6 +126,11 @@ namespace AltinnReStorage.Services
         public async Task<bool> ReplaceDataElement(DataElement dataElement)
         {
             DocumentClient client = await _clientProvider.GetDocumentClient(Program.Environment);
+            if (client == null)
+            {
+                throw new Exception("Unable to create document client. Please check your login credentials.");
+            }
+
             ResourceResponse<Document> createDocumentResponse = await client.ReplaceDocumentAsync($"{_dataCollectionUri}/docs/{dataElement.Id}", dataElement);
             HttpStatusCode res = createDocumentResponse.StatusCode;
             return res == HttpStatusCode.OK;
