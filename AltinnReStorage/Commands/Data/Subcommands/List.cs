@@ -178,7 +178,6 @@ namespace AltinnReStorage.Commands.Data
             {
                 Console.WriteLine($"No active data elements were found for instanceGuid \"{instanceGuid}\"");
             }
-
         }
 
         private void CleanUp()

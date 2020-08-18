@@ -60,7 +60,7 @@ namespace AltinnReStorage.Services
             }
             catch (Exception e)
             {
-                throw new Exception("An error occured when setting ut blob storage client. Please check your credentials and try again.");
+                throw new Exception("An error occured when setting ut blob storage client. Please check your credentials and try again.", e);
             }
 
             return client;
