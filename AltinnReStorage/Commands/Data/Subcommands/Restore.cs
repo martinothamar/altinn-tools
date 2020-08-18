@@ -89,6 +89,7 @@ namespace AltinnReStorage.Commands.Data
          ShowInHelpText = true,
          Description = "Restore timestamp.")]
         [Required]
+        [Attributes.Timestamp]
         public string RestoreTimestamp { get; set; }
 
         private readonly ICosmosService _cosmosService;
