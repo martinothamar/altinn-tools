@@ -7,25 +7,27 @@ Add appsettings.json and run the application.
 appsettings.json contains configuration for the various storage accounts and cosmos db. 
 An updated version of this file is available on [AltinnPedia](https://altinnpedia.ai-dev.brreg.no/ops/backup-recovery/altinn_restorage/) (requires authentication).
 
-## Root command: Settings
+## Root command: settings
 
-### SubCommand: Update
+### SubCommand: update
 
-#### Set environment context
+Set environment context
 
 `settings update -e [environment]`
 
 Valid environments: at22, at23, at24, tt02, prod
 
-#### Authenticate yourself using Azure AD
+### SubCommand: login / logout
+
+Authenticate yourself using Azure AD
 
 `settings login`
 
 `settings logout`
 
-## Root command: Data
+## Root command: data
 
-### SubCommand: List
+### SubCommand: list
 
 This command lists data elements of an instance
 
