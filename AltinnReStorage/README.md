@@ -23,11 +23,9 @@ Valid environments: at22, at23, at24, tt02, pr
 
 `settings logout`
 
-## Root command: Storage
+## Root command: Data
 
-### Command: Data
-
-#### SubCommand: List
+### Command: List
 
 This command lists data elements of an instance
 
@@ -49,7 +47,7 @@ Optional paramters:
 
 \*\* org/app is required if retrieving deleted data elements
 
-#### Examples: storage data list
+#### Examples: data list
 
 All examples are based on data in TT02
 
@@ -62,7 +60,7 @@ List all deleted elements of an instance:
 List both active and deleted elements of an instance:
 `data list -ig e415477d-7964-4ffe-97b1-4b2cbf7ba8fe -org ttd -app apps-test -ds all`
 
-#### SubCommand: info
+#### Command: info
 
 This command show information for a data element
 
@@ -87,7 +85,7 @@ Options:
 
 `--list-versions` (-lv)
 
-#### Examples: storage data info
+#### Examples: data info
 
 All examples are based on data in TT02
 
@@ -100,7 +98,7 @@ List previous versions of a data element:
 Get metadata and list previous versions of a data element:
 `data info -ig e415477d-7964-4ffe-97b1-4b2cbf7ba8fe -dg e17d5140-dafe-47ae-a033-4ab309a5a489 -org ttd -app apps-test -lv`
 
-#### SubCommand: undelete
+#### Command: undelete
 
 This command undeletes a deleted data element
 
@@ -116,13 +114,13 @@ Required parameters:
 
 `--application` (-app)
 
-#### Examples: storage data undelete
+#### Examples: data undelete
 
 All examples are based on data in TT02
 
 `data undelete -ig 374e360e-f03c-4fce-b37b-78b21a51401c -dg 5d52a7cf-1ed9-4664-ab13-c074586c8f5c -org ttd -app apps-test`
 
-#### SubCommand: restore
+#### Command: restore
 
 This command restores an active data element to a previous version
 
@@ -140,7 +138,7 @@ Required parameters:
 
 `--restoreTimestamp` (-rt)
 
-#### Examples: storage data restore
+#### Examples: data restore
 
 All examples are based on data in TT02
 
