@@ -196,12 +196,13 @@ namespace AltinnReStorage.Services
             BlobContainerClient container = await _clientProvider.GetBlobClient(org, Program.Environment);
             BlockBlobClient client = container.GetBlockBlobClient($"{org}/{app}/{instanceGuid}/data/{dataGuid}");
 
+            await client.UndeleteAsync();
+
             if (!await client.ExistsAsync())
             {
                 return false;
             }
 
-            await client.UndeleteAsync();
             await client.DeleteIfExistsAsync(DeleteSnapshotsOption.OnlySnapshots);
             return true;
         }
