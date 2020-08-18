@@ -9,13 +9,13 @@ An updated version of this file is available on [AltinnPedia](https://altinnpedi
 
 ## Root command: Settings
 
-### Command: Settings
+### SubCommand: Update
 
 #### Set environment context
 
 `settings update -e [environment]`
 
-Valid environments: at22, at23, at24, tt02, pr
+Valid environments: at22, at23, at24, tt02, prod
 
 #### Authenticate yourself using Azure AD
 
@@ -25,7 +25,7 @@ Valid environments: at22, at23, at24, tt02, pr
 
 ## Root command: Data
 
-### Command: List
+### SubCommand: List
 
 This command lists data elements of an instance
 
@@ -60,7 +60,7 @@ List all deleted elements of an instance:
 List both active and deleted elements of an instance:
 `data list -ig e415477d-7964-4ffe-97b1-4b2cbf7ba8fe -org ttd -app apps-test -ds all`
 
-#### Command: info
+#### SubCommand: info
 
 This command show information for a data element
 
@@ -98,7 +98,7 @@ List previous versions of a data element:
 Get metadata and list previous versions of a data element:
 `data info -ig e415477d-7964-4ffe-97b1-4b2cbf7ba8fe -dg e17d5140-dafe-47ae-a033-4ab309a5a489 -org ttd -app apps-test -lv`
 
-#### Command: undelete
+#### SubCommand: undelete
 
 This command undeletes a deleted data element
 
@@ -120,7 +120,7 @@ All examples are based on data in TT02
 
 `data undelete -ig 374e360e-f03c-4fce-b37b-78b21a51401c -dg 5d52a7cf-1ed9-4664-ab13-c074586c8f5c -org ttd -app apps-test`
 
-#### Command: restore
+#### SubCommand: restore
 
 This command restores an active data element to a previous version
 
