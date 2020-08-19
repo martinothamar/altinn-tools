@@ -51,7 +51,7 @@ namespace AltinnReStorage.Services
         }
 
         /// <inheritdoc/>
-        public async Task<DataElement> GetDataElementBackup(string instanceGuid, string dataGuid, string restoreTimestamp)
+        public async Task<DataElement> GetDataElementBackup(string instanceGuid, string dataGuid, string lastChangedTime)
         {
             string name = $"dataElements/{instanceGuid}/{dataGuid}";
             string snapshot = string.Empty;
@@ -68,24 +68,23 @@ namespace AltinnReStorage.Services
 
             await foreach (BlobItem item in container.GetBlobsAsync(BlobTraits.None, BlobStates.Snapshots, name))
             {
-                if ( item.Snapshot != null && (item.Properties.LastModified >= Convert.ToDateTime(restoreTimestamp)))
-                {                    
+                if (item.Snapshot != null && (item.Properties.LastModified >= Convert.ToDateTime(lastChangedTime)))
+                {
                     snapshot = item.Snapshot;
                     break;
                 }
             }
 
-            if (string.IsNullOrEmpty(snapshot))
-            {
-                return null;
-            }
-
             try
             {
+                if (string.IsNullOrEmpty(snapshot))
+                {
+                    return null;
+                }
+
                 BlockBlobClient snapshotClient = client.WithSnapshot(snapshot);
                 using var stream = new MemoryStream();
                 await snapshotClient.DownloadToAsync(stream);
-                await client.DeleteIfExistsAsync(DeleteSnapshotsOption.OnlySnapshots);
 
                 string metadata = System.Text.Encoding.UTF8.GetString(stream.ToArray());
                 DataElement backup = JsonConvert.DeserializeObject<DataElement>(metadata, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
@@ -96,6 +95,10 @@ namespace AltinnReStorage.Services
             {
                 Console.WriteLine(e);
                 return null;
+            }
+            finally
+            {
+                await client.DeleteIfExistsAsync(DeleteSnapshotsOption.OnlySnapshots);
             }
         }
 
@@ -164,7 +167,7 @@ namespace AltinnReStorage.Services
         }
 
         /// <inheritdoc/>
-        public async Task<bool> RestoreBlob(string org, string app, string instanceGuid, string dataGuid, string restoreTimestamp)
+        public async Task<(bool, string)> RestoreBlob(string org, string app, string instanceGuid, string dataGuid, string restoreTimestamp)
         {
             string name = $"{org}/{app}/{instanceGuid}/data/{dataGuid}";
 
@@ -173,7 +176,7 @@ namespace AltinnReStorage.Services
 
             if (!await client.ExistsAsync())
             {
-                return false;
+                return (false, string.Empty);
             }
 
             await client.UndeleteAsync();
@@ -187,7 +190,7 @@ namespace AltinnReStorage.Services
             }
 
             await client.DeleteIfExistsAsync(DeleteSnapshotsOption.OnlySnapshots);
-            return true;
+            return (true, snapshot.Properties.LastModified.ToString());
         }
 
         /// <inheritdoc/>

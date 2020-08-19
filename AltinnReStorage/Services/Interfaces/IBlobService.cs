@@ -30,7 +30,7 @@ namespace AltinnReStorage.Services
         /// <summary>
         /// Restored a blob from a snapshot corresponding to the given snapshot.
         /// </summary>
-        public Task<bool> RestoreBlob(string org, string app, string instanceGuid, string dataGuid, string restoreTimestamp);
+        public Task<(bool, string)> RestoreBlob(string org, string app, string instanceGuid, string dataGuid, string restoreTimestamp);
 
         /// <summary>
         /// Gets the metadata backup for a data element.
@@ -40,6 +40,6 @@ namespace AltinnReStorage.Services
         /// <summary>
         /// Gets the metadata backup for a data element based on the restore timestamp.
         /// </summary>
-        public Task<DataElement> GetDataElementBackup(string instanceGuid, string dataGuid, string restoreTimestamp);
+        public Task<DataElement> GetDataElementBackup(string instanceGuid, string dataGuid, string lastChangedTime);
     }
 }

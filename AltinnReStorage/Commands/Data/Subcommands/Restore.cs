@@ -124,9 +124,11 @@ namespace AltinnReStorage.Commands.Data
 
             try
             {
-                if (await _blobService.RestoreBlob(Org, App, instanceGuid, DataGuid, RestoreTimestamp))
+                (bool res, string lastChanged) = await _blobService.RestoreBlob(Org, App, instanceGuid, DataGuid, RestoreTimestamp);
+
+                if (res)
                 {
-                    DataElement backup = await _blobService.GetDataElementBackup(instanceGuid, DataGuid, RestoreTimestamp);
+                    DataElement backup = await _blobService.GetDataElementBackup(instanceGuid, DataGuid, lastChanged);
                     if (backup != null && await _cosmosService.ReplaceDataElement(backup))
                     {
                         Console.WriteLine("-----------------------------------------------------------------------");
