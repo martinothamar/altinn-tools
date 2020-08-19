@@ -68,8 +68,8 @@ namespace AltinnReStorage.Services
 
             await foreach (BlobItem item in container.GetBlobsAsync(BlobTraits.None, BlobStates.Snapshots, name))
             {
-                if (Convert.ToDateTime(item.Snapshot) >= Convert.ToDateTime(restoreTimestamp))
-                {
+                if ( item.Snapshot != null && (item.Properties.LastModified >= Convert.ToDateTime(restoreTimestamp)))
+                {                    
                     snapshot = item.Snapshot;
                     break;
                 }
