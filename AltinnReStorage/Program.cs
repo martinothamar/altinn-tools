@@ -69,7 +69,7 @@ namespace AltinnReStorage
                         await _dataCmd.ExecuteAsync(args);
                         break;
                     case "instance":
-                        await _dataCmd.ExecuteAsync(args);
+                        await _instanceCmd.ExecuteAsync(args);
                         break;
                     case "settings":
                         await _settingsCmd.ExecuteAsync(args);
