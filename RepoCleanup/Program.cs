@@ -36,18 +36,20 @@ namespace RepoCleanup
                 repos.AddRange(await GetRepositories(user.Username, null));
             }
 
-            Console.WriteLine($"\r\nTotal number of repos:  {repos.Count}");
+            Console.WriteLine($"\r\n Total number of repositories: {repos.Count}");
 
             Console.WriteLine($"Filtering repositories...");
             List<Repository> filtered = await FilterRepos(repos);
 
-            Console.WriteLine($"Total number of repos to delete:  {filtered.Count}");
+            Console.WriteLine($"Number of repositories to delete: {filtered.Count}");
 
             Console.Write($"Deleting repositories...");
             foreach (Repository repository in filtered)
             {
                 await DeleteRepository(repository);
             }
+
+            Console.WriteLine("Altinn Studio Repository cleanup complete");
 
             Globals.Client.Dispose();
         }
@@ -109,7 +111,6 @@ namespace RepoCleanup
 
         private static async Task<List<Repository>> FilterRepos(List<Repository> repos)
         {
-
             List<Repository> filteredList = new List<Repository>();
 
             filteredList.AddRange(repos.Where(r => r.Created < new DateTime(2020, 1, 1) && r.Updated < new DateTime(2020, 1, 1)));
