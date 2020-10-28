@@ -47,14 +47,10 @@ namespace RepoCleanup
             Console.Write($"Deleting repositories...");
             foreach (Repository repository in filtered)
             {
-                Console.Write(".");
                 await DeleteRepository(repository);
             }
 
             Globals.Client.Dispose();
-            while (true)
-            {
-            }
         }
 
         private static async Task<List<Organisation>> GetOrganisations()
@@ -99,15 +95,16 @@ namespace RepoCleanup
             return JsonSerializer.Deserialize<List<File>>(jsonString);
         }
 
-
-
-
         private static async Task DeleteRepository(Repository repo)
         {
             HttpResponseMessage res = await Globals.Client.DeleteAsync($"repos/{repo.Owner.Username}/{repo.Name}");
             if (!res.IsSuccessStatusCode)
             {
-                Console.WriteLine($"\r\nDeleting {repo.Owner.Username}/{repo.Name} failed with status code {res.StatusCode}: {await res.Content.ReadAsStringAsync()}.");
+                Console.WriteLine($"\r\n Delete {repo.Owner.Username}/{repo.Name} incomplete. Failed with status code {res.StatusCode}: {await res.Content.ReadAsStringAsync()}.");
+            }
+            else
+            {
+                Console.WriteLine($"\r\n Delete {repo.Owner.Username}/{repo.Name} completed.");
             }
         }
 
