@@ -123,7 +123,7 @@ namespace RepoCleanup
             foreach (Repository repo in repos)
             {
                 List<File> files = await GetRepoContent(repo);
-                if (!files.Exists(f => f.Name.Equals("App.sln")))
+                if (files.Exists(f => f.Name.Equals("AltinnService.csproj")))
                 {
                     filteredList.Add(repo);
                 }
