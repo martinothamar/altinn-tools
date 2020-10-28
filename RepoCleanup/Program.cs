@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+
 using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
@@ -15,6 +16,7 @@ namespace RepoCleanup
             Console.Clear();
             Console.WriteLine("Altinn Studio Repository cleanup");
             SetUpClient();
+            CheckForDryRun();
 
             Console.WriteLine("\n\nGetting organisations...");
             List<Organisation> orgs = await GetOrganisations();
@@ -43,11 +45,32 @@ namespace RepoCleanup
 
             Console.WriteLine($"Number of repositories to delete: {filtered.Count}");
 
-            Console.Write($"Deleting repositories...");
-            foreach (Repository repository in filtered)
+            Console.WriteLine($"Deleting repositories...");
+            if (Globals.IsDryRun)
             {
-                await DeleteRepository(repository);
+                using (System.IO.StreamWriter file = new System.IO.StreamWriter("ReposToDelete.txt", false))
+                {
+                    foreach (Repository repository in filtered)
+                    {
+                        file.WriteLine($"Repo: {repository.Owner.Username}/{repository.Name} \t\t\t\t Last updated: {repository.Updated}");
+                    }
+                }
+
+                Console.WriteLine("Repositories for deletion can be found in ReposToDelete.txt");
             }
+            else
+            {
+                using (System.IO.StreamWriter file = new System.IO.StreamWriter("DeletedRepos.txt", false))
+                {
+                    foreach (Repository repository in filtered)
+                    {
+                        await DeleteRepository(repository);
+                    }
+
+                    Console.WriteLine("Deleted repositories are  for deletion can be found in ReposToDelete.txt");
+                }
+            }
+
 
             Console.WriteLine("Altinn Studio Repository cleanup complete");
 
@@ -82,10 +105,31 @@ namespace RepoCleanup
                 requestPath = $"users/{username}/repos";
             }
 
-            HttpResponseMessage res = await Globals.Client.GetAsync(requestPath);
-            string jsonString = await res.Content.ReadAsStringAsync();
+            List<Repository> repos = new List<Repository>();
+            int index = 1;
 
-            return JsonSerializer.Deserialize<List<Repository>>(jsonString);
+            while (true)
+            {
+                HttpResponseMessage res = await Globals.Client.GetAsync($"{requestPath}?page={index}");
+
+                if (!res.IsSuccessStatusCode)
+                {
+                    break;
+                }
+
+                string jsonString = await res.Content.ReadAsStringAsync();
+                List<Repository> retrievedRepos = JsonSerializer.Deserialize<List<Repository>>(jsonString);
+
+                if (retrievedRepos.Count == 0)
+                {
+                    break;
+                }
+
+                repos.AddRange(retrievedRepos);
+                ++index;
+            }
+
+            return repos;
         }
 
         private static async Task<List<File>> GetRepoContent(Repository repo)
@@ -103,17 +147,13 @@ namespace RepoCleanup
             {
                 Console.WriteLine($"\r\n Delete {repo.Owner.Username}/{repo.Name} incomplete. Failed with status code {res.StatusCode}: {await res.Content.ReadAsStringAsync()}.");
             }
-            else
-            {
-                Console.WriteLine($"\r\n Delete {repo.Owner.Username}/{repo.Name} completed.");
-            }
         }
 
         private static async Task<List<Repository>> FilterRepos(List<Repository> repos)
         {
             List<Repository> filteredList = new List<Repository>();
 
-            filteredList.AddRange(repos.Where(r => r.Created < new DateTime(2020, 1, 1) && r.Updated < new DateTime(2020, 1, 1)));
+            // filteredList.AddRange(repos.Where(r => r.Created < new DateTime(2020, 1, 1) && r.Updated < new DateTime(2020, 1, 1)));
 
             filteredList.AddRange(repos.Where(r => r.Name.Equals("codelists")));
 
@@ -213,6 +253,22 @@ namespace RepoCleanup
             }
 
             return token;
+        }
+
+        private static void CheckForDryRun()
+        {
+            Console.WriteLine("Press 'y' if you would like to delete the repositories. If not press any other key.");
+
+            ConsoleKeyInfo cki = Console.ReadKey();
+
+            if (cki.Key.ToString() == "y")
+            {
+                Globals.IsDryRun = false;
+            }
+            else
+            {
+                Globals.IsDryRun = true;
+            }
         }
     }
 }
