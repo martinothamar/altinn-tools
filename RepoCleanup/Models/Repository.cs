@@ -19,5 +19,8 @@ namespace RepoCleanup.Models
 
         [JsonPropertyName("updated_at")]
         public DateTime Updated { get; set; }
+
+        [JsonPropertyName("empty")]
+        public bool Empty { get; set; }
     }
 }

@@ -16,8 +16,7 @@ namespace RepoCleanup
             Console.WriteLine("Altinn Studio Repository cleanup");
             SetUpClient();
 
-            Console.Clear();
-            Console.WriteLine("Getting organisations...");
+            Console.WriteLine("\n\nGetting organisations...");
             List<Organisation> orgs = await GetOrganisations();
 
             Console.WriteLine("Getting users...");
@@ -113,9 +112,11 @@ namespace RepoCleanup
 
             List<Repository> filteredList = new List<Repository>();
 
-            filteredList.AddRange(repos.Where(r => r.Created < new DateTime(2020, 1, 1) && r.Updated < new DateTime(2020, 1, 1)).ToList());
+            filteredList.AddRange(repos.Where(r => r.Created < new DateTime(2020, 1, 1) && r.Updated < new DateTime(2020, 1, 1)));
 
-            filteredList.AddRange(repos.Where(r => r.Name.Equals("codelists")).ToList());
+            filteredList.AddRange(repos.Where(r => r.Name.Equals("codelists")));
+
+            filteredList.AddRange(repos.Where(r => r.Empty));
 
             filteredList = filteredList.Distinct().ToList();
 
@@ -162,8 +163,7 @@ namespace RepoCleanup
 
         private static Enums.Environment SelectEnvironment()
         {
-            Console.Clear();
-            Console.WriteLine("Choose an environment:");
+            Console.WriteLine("\n\nChoose an environment:");
             Console.WriteLine("1) Development");
             Console.WriteLine("2) Staging");
             Console.WriteLine("3) Production");
@@ -186,8 +186,7 @@ namespace RepoCleanup
         {
             string url = string.Empty;
 
-            Console.Clear();
-            Console.WriteLine("The application requires a valid API key with admin acces.");
+            Console.WriteLine("\n\nThe application requires an API key with admin acces.");
             switch (env)
             {
                 case Enums.Environment.Development:
@@ -208,6 +207,7 @@ namespace RepoCleanup
             string token = Console.ReadLine().Trim();
             if (token.Length != 40)
             {
+                Console.Write("Invalid token.");
                 return GetAccessToken(env);
             }
 
