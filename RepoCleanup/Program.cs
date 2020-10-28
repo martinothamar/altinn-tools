@@ -51,6 +51,7 @@ namespace RepoCleanup
                 await DeleteRepository(repository);
             }
 
+            Globals.Client.Dispose();
             while (true)
             {
             }
