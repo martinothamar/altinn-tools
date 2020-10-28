@@ -187,7 +187,7 @@ namespace RepoCleanup
         {
             string url = string.Empty;
 
-            Console.WriteLine("\n\nThe application requires an API key with admin acces.");
+            Console.WriteLine("\n\nThe application requires an API key with admin access.");
             switch (env)
             {
                 case Enums.Environment.Development:
