@@ -60,17 +60,16 @@ namespace RepoCleanup
             }
             else
             {
-                using (System.IO.StreamWriter file = new System.IO.StreamWriter("DeletedRepos.txt", false))
+                using (System.IO.StreamWriter writer = System.IO.File.AppendText("DeletedRepos.txt"))
                 {
                     foreach (Repository repository in filtered)
                     {
-                        await DeleteRepository(repository);
+                        await DeleteRepository(repository, writer);
                     }
-
-                    Console.WriteLine("Deleted repositories are  for deletion can be found in ReposToDelete.txt");
                 }
-            }
 
+                Console.WriteLine("Deleted repositories are can be found in DeletedRepos.txt");
+            }
 
             Console.WriteLine("Altinn Studio Repository cleanup complete");
 
@@ -140,12 +139,16 @@ namespace RepoCleanup
             return JsonSerializer.Deserialize<List<File>>(jsonString);
         }
 
-        private static async Task DeleteRepository(Repository repo)
+        private static async Task DeleteRepository(Repository repo, System.IO.StreamWriter writer)
         {
             HttpResponseMessage res = await Globals.Client.DeleteAsync($"repos/{repo.Owner.Username}/{repo.Name}");
             if (!res.IsSuccessStatusCode)
             {
                 Console.WriteLine($"\r\n Delete {repo.Owner.Username}/{repo.Name} incomplete. Failed with status code {res.StatusCode}: {await res.Content.ReadAsStringAsync()}.");
+            }
+            else
+            {
+                writer.WriteLine($"Repo: {repo.Owner.Username}/{repo.Name}");
             }
         }
 
