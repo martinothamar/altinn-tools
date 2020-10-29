@@ -18,8 +18,12 @@ namespace RepoCleanup
             SetUpClient();
             CheckForDryRun();
 
-            Console.WriteLine($"\n\n Start time: {DateTime.Now}");
-            Console.WriteLine("\n\nGetting organisations...");
+            Console.WriteLine();
+            Console.WriteLine();
+            Console.WriteLine($"Start time: {DateTime.Now}");
+            Console.WriteLine();
+            Console.WriteLine();
+            Console.WriteLine("Getting organisations...");
             List<Organisation> orgs = await GetOrganisations();
 
             Console.WriteLine("Getting users...");
@@ -39,12 +43,14 @@ namespace RepoCleanup
                 repos.AddRange(await GetRepositories(user.Username, null));
             }
 
-            Console.WriteLine($"\r\nTotal number of repositories: {repos.Count}");
+            Console.WriteLine();
+            Console.WriteLine($"Total number of repositories: {repos.Count}");
 
             Console.WriteLine($"Filtering repositories...");
             List<Repository> filtered = await FilterRepos(repos);
 
-            Console.WriteLine($"\r\nNumber of repositories to delete: {filtered.Count}");
+            Console.WriteLine();
+            Console.WriteLine($"Number of repositories to delete: {filtered.Count}");
 
             Console.WriteLine($"Deleting repositories...");
             if (Globals.IsDryRun)
@@ -58,7 +64,8 @@ namespace RepoCleanup
                     }
                 }
 
-                Console.WriteLine("\r\nRepositories for deletion can be found in ReposToDelete.txt");
+                Console.WriteLine();
+                Console.WriteLine("Repositories for deletion can be found in ReposToDelete.txt");
             }
             else
             {
@@ -71,7 +78,8 @@ namespace RepoCleanup
                     }
                 }
 
-                Console.WriteLine("\r\nDeleted repositories are can be found in DeletedRepos.txt");
+                Console.WriteLine();
+                Console.WriteLine("Deleted repositories are can be found in DeletedRepos.txt");
             }
 
             Console.WriteLine($"Altinn Studio Repository cleanup completed { DateTime.Now}");
@@ -147,7 +155,8 @@ namespace RepoCleanup
             HttpResponseMessage res = await Globals.Client.DeleteAsync($"repos/{repo.Owner.Username}/{repo.Name}");
             if (!res.IsSuccessStatusCode)
             {
-                Console.WriteLine($"\r\n Delete {repo.Owner.Username}/{repo.Name} incomplete. Failed with status code {res.StatusCode}: {await res.Content.ReadAsStringAsync()}.");
+                Console.WriteLine();
+                Console.WriteLine($"Delete {repo.Owner.Username}/{repo.Name} incomplete. Failed with status code {res.StatusCode}: {await res.Content.ReadAsStringAsync()}.");
             }
             else
             {
@@ -211,11 +220,14 @@ namespace RepoCleanup
 
         private static Enums.Environment SelectEnvironment()
         {
-            Console.WriteLine("\n\nChoose an environment:");
+            Console.WriteLine();
+            Console.WriteLine();
+            Console.WriteLine("Choose an environment:");
             Console.WriteLine("1) Development");
             Console.WriteLine("2) Staging");
             Console.WriteLine("3) Production");
-            Console.Write("\r\nSelect an option: ");
+            Console.WriteLine();
+            Console.Write("Select an option: ");
 
             switch (Console.ReadLine())
             {
@@ -234,7 +246,8 @@ namespace RepoCleanup
         {
             string url = string.Empty;
 
-            Console.WriteLine("\n\nThe application requires an API key with admin access.");
+            Console.WriteLine();
+            Console.WriteLine("The application requires an API key with admin access.");
             switch (env)
             {
                 case Enums.Environment.Development:
@@ -250,7 +263,8 @@ namespace RepoCleanup
             }
 
             Console.WriteLine($"Tokens can be generated on this page: {url}");
-            Console.Write("\r\nProvide token: ");
+            Console.WriteLine();
+            Console.Write("Provide token: ");
 
             string token = Console.ReadLine().Trim();
             if (token.Length != 40)
