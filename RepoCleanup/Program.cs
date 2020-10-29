@@ -18,6 +18,7 @@ namespace RepoCleanup
             SetUpClient();
             CheckForDryRun();
 
+            Console.WriteLine($"\n\n Start time: {DateTime.Now}");
             Console.WriteLine("\n\nGetting organisations...");
             List<Organisation> orgs = await GetOrganisations();
 
@@ -38,12 +39,12 @@ namespace RepoCleanup
                 repos.AddRange(await GetRepositories(user.Username, null));
             }
 
-            Console.WriteLine($"\r\n Total number of repositories: {repos.Count}");
+            Console.WriteLine($"\r\nTotal number of repositories: {repos.Count}");
 
             Console.WriteLine($"Filtering repositories...");
             List<Repository> filtered = await FilterRepos(repos);
 
-            Console.WriteLine($"Number of repositories to delete: {filtered.Count}");
+            Console.WriteLine($"\r\nNumber of repositories to delete: {filtered.Count}");
 
             Console.WriteLine($"Deleting repositories...");
             if (Globals.IsDryRun)
@@ -52,11 +53,12 @@ namespace RepoCleanup
                 {
                     foreach (Repository repository in filtered)
                     {
+                        Console.Write(".");
                         file.WriteLine($"Repo: {repository.Owner.Username}/{repository.Name} \t\t\t\t Last updated: {repository.Updated}");
                     }
                 }
 
-                Console.WriteLine("Repositories for deletion can be found in ReposToDelete.txt");
+                Console.WriteLine("\r\nRepositories for deletion can be found in ReposToDelete.txt");
             }
             else
             {
@@ -64,14 +66,15 @@ namespace RepoCleanup
                 {
                     foreach (Repository repository in filtered)
                     {
+                        Console.Write(".");
                         await DeleteRepository(repository, writer);
                     }
                 }
 
-                Console.WriteLine("Deleted repositories are can be found in DeletedRepos.txt");
+                Console.WriteLine("\r\nDeleted repositories are can be found in DeletedRepos.txt");
             }
 
-            Console.WriteLine("Altinn Studio Repository cleanup complete");
+            Console.WriteLine($"Altinn Studio Repository cleanup completed { DateTime.Now}");
 
             Globals.Client.Dispose();
         }
@@ -167,6 +170,7 @@ namespace RepoCleanup
             repos.RemoveAll(r => filteredList.Contains(r));
             foreach (Repository repo in repos)
             {
+                Console.Write(".");
                 List<File> files = await GetRepoContent(repo);
                 if (files.Exists(f => f.Name.Equals("AltinnService.csproj")))
                 {
@@ -240,7 +244,7 @@ namespace RepoCleanup
                     url = "https://staging.altinn.studio/repos/user/settings/applications";
                     break;
                 case Enums.Environment.Production:
-                    url = "https://ltinn.studio/repos/user/settings/applications";
+                    url = "https://altinn.studio/repos/user/settings/applications";
                     break;
 
             }
@@ -264,7 +268,7 @@ namespace RepoCleanup
 
             ConsoleKeyInfo cki = Console.ReadKey();
 
-            if (cki.Key.ToString() == "y")
+            if (cki.Key.ToString() == "Y")
             {
                 Globals.IsDryRun = false;
             }
