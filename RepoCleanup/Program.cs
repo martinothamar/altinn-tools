@@ -153,7 +153,7 @@ namespace RepoCleanup
         {
             List<Repository> filteredList = new List<Repository>();
 
-            // filteredList.AddRange(repos.Where(r => r.Created < new DateTime(2020, 1, 1) && r.Updated < new DateTime(2020, 1, 1)));
+            filteredList.AddRange(repos.Where(r => r.Created < new DateTime(2020, 1, 1) && r.Updated < new DateTime(2020, 1, 1)));
 
             filteredList.AddRange(repos.Where(r => r.Name.Equals("codelists")));
 
