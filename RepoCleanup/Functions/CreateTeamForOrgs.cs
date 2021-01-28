@@ -19,7 +19,7 @@ namespace RepoCleanup.Functions
             List<string> successfulOrgs = new List<string>();
             List<string> failedOrgs = new List<string>();
             StringBuilder logBuilder = new StringBuilder();
-            string logName = $"CreateTeamForOrgs-Log-{DateTime.Now}.txt";
+            string logName = @$"CreateTeamForOrgs-Log.txt";
 
             Console.Clear();
             Console.WriteLine("\r\n----------------------------------------------------------------");
@@ -37,23 +37,17 @@ namespace RepoCleanup.Functions
                 if (response.Success)
                 {
                     successfulOrgs.Add(org);
-                    logBuilder.AppendLine($"Team {teamOption.Name} was successfully added to org: {org}.");
+                    logBuilder.AppendLine($"{DateTime.Now} - Information - Team {teamOption.Name} was successfully added to org: {org}.");
                 }
                 else
                 {
                     failedOrgs.Add(org);
-                    logBuilder.AppendLine($"Error: Team {teamOption.Name} was not added to org: {org}.");
-                    logBuilder.AppendLine($"Error: {response.StatusCode}:{JsonSerializer.Serialize(response.ResponseMessage, Globals.SerializerOptions)}.");
+                    logBuilder.AppendLine($"{DateTime.Now} - Error - Team {teamOption.Name} was not added to org {org}.");
+                    logBuilder.AppendLine($"{DateTime.Now} - Error -  {response.StatusCode}:{JsonSerializer.Serialize(response.ResponseMessage, Globals.SerializerOptions)}.");
                 }
             }
 
-            if (!Directory.Exists(logName))
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(logName));
-            }
-
-            Directory.CreateDirectory(Path.GetDirectoryName(logName));
-            using (StreamWriter file = new StreamWriter(logName, false))
+            using (StreamWriter file = new StreamWriter(logName, true))
             {
                 file.WriteLine(logBuilder.ToString());
             }
@@ -62,7 +56,7 @@ namespace RepoCleanup.Functions
 
             if (failedOrgs.Count > 0)
             {
-                Console.WriteLine($"Update failed for {failedOrgs.Count} organisations. See log {logName}.");
+                Console.WriteLine($"Update failed for {failedOrgs.Count}/{orgsToUpdate.Count} organisations. See log {logName}.");
             }
             else
             {
