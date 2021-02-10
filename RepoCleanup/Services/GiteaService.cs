@@ -56,5 +56,27 @@ namespace RepoCleanup.Services
 
             return result;
         }
+
+        public static async Task<GiteaResponse> CreateOrg(Organisation organisation)
+        {
+            GiteaResponse result = new GiteaResponse();
+
+            HttpContent content = new StringContent(JsonSerializer.Serialize(organisation, Globals.SerializerOptions), Encoding.UTF8, "application/json");
+            HttpResponseMessage res = await Globals.Client.PostAsync($"orgs", content);
+
+            if (res.StatusCode == System.Net.HttpStatusCode.Created)
+            {
+                result.Success = true;
+                result.ResponseMessage = await res.Content.ReadAsStringAsync();
+            }
+            else
+            {
+                result.ResponseMessage = await res.Content.ReadAsStringAsync();
+                result.Success = false;
+                result.StatusCode = res.StatusCode;
+            }
+
+            return result;
+        }
     }
 }

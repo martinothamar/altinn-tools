@@ -26,7 +26,8 @@ namespace RepoCleanup
             Console.WriteLine("\r\nChoose a function:");
             Console.WriteLine("1) Remove codelists repositories");
             Console.WriteLine("2) Create team for organisation(s)");
-            Console.WriteLine("3) Exit");
+            Console.WriteLine("3) Create org with all teams");
+            Console.WriteLine("4) Exit");
             Console.Write("\r\nSelect an option: ");
 
             switch (Console.ReadLine())
@@ -38,6 +39,9 @@ namespace RepoCleanup
                     await CreateTeamForOrgs.Run();
                     return;
                 case "3":
+                    await CreateOrgWithTeams.Run();
+                    return;
+                case "4":
                 default:
                     return;
             }
