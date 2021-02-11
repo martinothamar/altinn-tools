@@ -7,12 +7,12 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using RepoCleanup.Models;
 using RepoCleanup.Services;
+using RepoCleanup.Utils;
 
 namespace RepoCleanup.Functions
 {
     public static class CreateOrgWithTeams
     {
-
         public static async Task Run()
         {
             StringBuilder logBuilder = new StringBuilder();
@@ -58,9 +58,9 @@ namespace RepoCleanup.Functions
 
             bool createdTeams = true;
             List<CreateTeamOption> teams = new List<CreateTeamOption>();
-            teams.Add(CreateTeamInfo("Deploy-Prod", "Members can deploy to production", false, Permission.read));
-            teams.Add(CreateTeamInfo("Deploy-TT02", "Members can deploy to TT02", false, Permission.read));
-            teams.Add(CreateTeamInfo("Devs", "All application developers", true, Permission.write));
+            teams.Add(TeamOption.GetCreateTeamOption("Deploy-Prod", "Members can deploy to production", false, Permission.read));
+            teams.Add(TeamOption.GetCreateTeamOption("Deploy-TT02", "Members can deploy to TT02", false, Permission.read));
+            teams.Add(TeamOption.GetCreateTeamOption("Devs", "All application developers", true, Permission.write));
 
             Console.WriteLine("Creating teams for org. Please wait.");
             foreach (CreateTeamOption team in teams)
@@ -97,12 +97,12 @@ namespace RepoCleanup.Functions
             while (!isValid)
             {
                 Console.Write("\r\nSet username (shortname) for org: ");
-                username = Console.ReadLine();
+                username = Console.ReadLine().ToLower();
 
-                isValid = Regex.IsMatch(username, "^[a-z]+$");
+                isValid = Regex.IsMatch(username, "^[a-z]+[a-z0-9\\-]+[a-z0-9]$");
                 if (!isValid)
                 {
-                    Console.WriteLine("Invalid name. Letters a-z are permitted.");
+                    Console.WriteLine("Invalid name. Letters a-z and character '-' are permitted. Username must start with a letter and end with a letter or number.");
                 }
             }
 
@@ -119,7 +119,14 @@ namespace RepoCleanup.Functions
                 Console.Write("\r\nSet website for org: ");
                 website = Console.ReadLine();
 
-                isValid = Regex.IsMatch(website, "^[a-zA-Z0-9\\-._/:]*$");
+                if (string.IsNullOrEmpty(website))
+                {
+                    isValid = true;
+                }
+                else
+                {
+                    isValid = Regex.IsMatch(website, "^[a-zA-Z0-9\\-._/:]*$");
+                }
                 if (!isValid)
                 {
                     Console.WriteLine("Invalid website adress. Letters a-z and characters:'-', '_', '.', '/', ':' are permitted.");
@@ -133,20 +140,6 @@ namespace RepoCleanup.Functions
             org.Visibility = "public";
             org.RepoAdminChangeTeamAccess = false;
             return org;
-        }
-
-        private static CreateTeamOption CreateTeamInfo(string name, string description, bool canCreateOrgRepo, Permission permission)
-        {
-            CreateTeamOption teamOption = new CreateTeamOption
-            {
-                CanCreateOrgRepo = canCreateOrgRepo,
-                Description = description,
-                IncludesAllRepositories = true,
-                Name = name,
-                Permission = permission
-            };
-
-            return teamOption;
         }
     }
 }
