@@ -1,6 +1,6 @@
 ﻿using RepoCleanup.Models;
 using RepoCleanup.Services;
-
+using RepoCleanup.Utils;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -150,14 +150,7 @@ namespace RepoCleanup.Functions
                     break;
             }
 
-            CreateTeamOption teamOption = new CreateTeamOption
-            {
-                CanCreateOrgRepo = canCreateOrgRepo,
-                Description = description,
-                IncludesAllRepositories = true,
-                Name = name,
-                Permission = permission
-            };
+            CreateTeamOption teamOption = TeamOption.GetCreateTeamOption(name, description, canCreateOrgRepo, permission);
 
             Console.WriteLine("\r\n----------------------------------------------------------------");
             Console.WriteLine("------------------ Review team confiruation --------------------");
