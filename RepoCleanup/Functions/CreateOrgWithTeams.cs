@@ -58,7 +58,7 @@ namespace RepoCleanup.Functions
 
             bool createdTeams = true;
             List<CreateTeamOption> teams = new List<CreateTeamOption>();
-            teams.Add(TeamOption.GetCreateTeamOption("Deploy-Prod", "Members can deploy to production", false, Permission.read));
+            teams.Add(TeamOption.GetCreateTeamOption("Deploy-Production", "Members can deploy to production", false, Permission.read));
             teams.Add(TeamOption.GetCreateTeamOption("Deploy-TT02", "Members can deploy to TT02", false, Permission.read));
             teams.Add(TeamOption.GetCreateTeamOption("Devs", "All application developers", true, Permission.write));
 
