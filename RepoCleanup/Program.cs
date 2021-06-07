@@ -27,21 +27,33 @@ namespace RepoCleanup
             Console.WriteLine("1) Remove codelists repositories");
             Console.WriteLine("2) Create team for organisation(s)");
             Console.WriteLine("3) Create org with all teams");
-            Console.WriteLine("4) Exit");
+            Console.WriteLine("4) Import organizations from json file");
+            Console.WriteLine("5) Create repository for organisation(s)");
+            Console.WriteLine("6) Add existing team to repository for organisation(s)");
+            Console.WriteLine("9) Exit");
             Console.Write("\r\nSelect an option: ");
 
             switch (Console.ReadLine())
             {
                 case "1":
-                    await RemoveCodelistRepo.Run();
+                    await RemoveCodelistRepoFunction.Run();
                     return;
                 case "2":
-                    await CreateTeamForOrgs.Run();
+                    await CreateTeamForOrgsFunction.Run();
                     return;
                 case "3":
-                    await CreateOrgWithTeams.Run();
+                    await CreateOrgWithTeamsFunction.Run();
                     return;
                 case "4":
+                    await CreateOrgWithTeamsFunction.RunFromFile();
+                    return;
+                case "5":
+                    await CreateRepoFunction.Run();
+                    return;
+                case "6":
+                    await AddTeamToRepoFunction.Run();
+                    return;
+                case "9":
                 default:
                     return;
             }
