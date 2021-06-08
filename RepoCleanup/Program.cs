@@ -27,7 +27,8 @@ namespace RepoCleanup
             Console.WriteLine("1) Remove codelists repositories");
             Console.WriteLine("2) Create team for organisation(s)");
             Console.WriteLine("3) Create org with all teams");
-            Console.WriteLine("4) Exit");
+            Console.WriteLine("8) Migrate Altinn II XSD Schema");
+            Console.WriteLine("9) Exit");
             Console.Write("\r\nSelect an option: ");
 
             switch (Console.ReadLine())
@@ -41,7 +42,10 @@ namespace RepoCleanup
                 case "3":
                     await CreateOrgWithTeams.Run();
                     return;
-                case "4":
+                case "8":
+                    await MigrateXsdSchemas.Run();
+                    return;
+                case "9":
                 default:
                     return;
             }
@@ -62,6 +66,9 @@ namespace RepoCleanup
                     break;
                 case Enums.Environment.Production:
                     url = "https://altinn.studio/repos/api/v1/";
+                    break;
+                case Enums.Environment.Local:
+                    url = "http://altinn3/repos/api/v1/";
                     break;
                 default:
                     SelectEnvironment();
@@ -94,6 +101,8 @@ namespace RepoCleanup
                     return Enums.Environment.Staging;
                 case "3":
                     return Enums.Environment.Production;
+                case "4":
+                    return Enums.Environment.Local;
                 default:
                     return Enums.Environment.Development;
             }
@@ -116,7 +125,9 @@ namespace RepoCleanup
                 case Enums.Environment.Production:
                     url = "https://altinn.studio/repos/user/settings/applications";
                     break;
-
+                case Enums.Environment.Local:
+                    url = "http://altinn3.no/repos/user/settings/applications";
+                    break;
             }
 
             Console.WriteLine($"Tokens can be generated on this page: {url}");
