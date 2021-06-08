@@ -1,0 +1,53 @@
+﻿using RepoCleanup.Application.CommandHandlers;
+using RepoCleanup.Application.Commands;
+using RepoCleanup.Models;
+using RepoCleanup.Services;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+
+namespace RepoCleanup.Functions
+{
+    public static class CreateRepoFunction
+    {
+        public async static Task Run()
+        {
+            SharedFunctionSnippets.WriteHeader("Create new repository for organisation(s)");
+
+            var orgs = await CollectOrgInfo();
+            var prefixRepoNameWithOrg = SharedFunctionSnippets.ShouldRepoNameBePrefixedWithOrg();
+            var repoName = SharedFunctionSnippets.CollectRepoName();
+
+            SharedFunctionSnippets.ConfirmWithExit($"You are about to create a new repository for {orgs.Count} organisation(s). Proceed?", "Aborting, no repositories created.");            
+
+            var command = new CreateRepoForOrgsCommand(orgs, repoName, prefixRepoNameWithOrg);
+            var commandHander = new CreateRepoForOrgsCommandHandler(new GiteaService());
+            var result = await commandHander.Handle(command);
+
+            Console.WriteLine($"Created {result} repositories.");
+        }
+
+        private static async Task<List<string>> CollectOrgInfo()
+        {
+            List<string> orgs = new List<string>();
+
+            bool updateAllOrgs = SharedFunctionSnippets.ShouldThisApplyToAllOrgs();
+
+            if (updateAllOrgs)
+            {
+                List<Organisation> organisations = await GiteaService.GetOrganisations();
+                orgs.AddRange(organisations.Select(o => o.Username));
+            }
+            else
+            {
+                Console.Write("\r\nProvide organisation name: ");
+
+                string name = Console.ReadLine();
+                orgs.Add(name);
+            }
+
+            return orgs;
+        }
+    }
+}
