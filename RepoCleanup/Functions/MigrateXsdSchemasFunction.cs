@@ -8,6 +8,8 @@ using System.Xml.Linq;
 
 using LibGit2Sharp;
 
+using RepoCleanup.Application.Commands;
+using RepoCleanup.Application.CommandHandlers;
 using RepoCleanup.Models;
 using RepoCleanup.Services;
 using RepoCleanup.Utils;
@@ -45,7 +47,10 @@ namespace RepoCleanup.Functions
 
                 if (!Directory.Exists(repoFolder))
                 {
-                    CloneRemoteDatamodelsRepository(organisation, repoName, repoFolder);
+                    CloneGitRepositoryCommand cloneGitRepositoryCommand = new CloneGitRepositoryCommand(
+                        $"{Globals.RepositoryBaseUrl}/{organisation}/{repoName}.git",
+                        repoFolder);
+                    CloneGitRepositoryCommandHandler.Handle(cloneGitRepositoryCommand);
                 }
 
                 Directory.CreateDirectory($"{repoFolder}\\.altinnstudio");
@@ -62,11 +67,10 @@ namespace RepoCleanup.Functions
 
                 foreach (Altinn2Service service in organisationReportingServices)
                 {
-                    logger.AddInformation($"Proceessing service: {service.ServiceName}");
+                    logger.AddNothing();
+                    logger.AddInformation($"Service: {service.ServiceName}");
 
                     Altinn2ReportingService reportingService = await AltinnServiceRepository.GetReportingService(service);
-
-                    logger.AddInformation($"Service {service.ServiceName}:");
 
                     string serviceName = $"{service.ServiceCode}-{service.ServiceEditionCode}" 
                         + $"-{service.ServiceName.AsFileName(false).Trim(' ', '.', ',')}";
@@ -98,8 +102,6 @@ namespace RepoCleanup.Functions
                     await Commit(repoFolder);
                     await Push(organisation, repoName, repoFolder);
                 }
-
-                Console.WriteLine();
             }
 
             logger.WriteLog();
@@ -120,27 +122,6 @@ namespace RepoCleanup.Functions
             }
 
             return basePath;
-        }
-
-        /// <summary>
-        /// Clone remote repository
-        /// </summary>
-        /// <param name="org">Unique identifier of the organisation responsible for the app.</param>
-        /// <param name="repository">The name of the repository</param>
-        /// <returns>The result of the cloning</returns>
-        private static string CloneRemoteDatamodelsRepository(string org, string repository, string localRepoPath)
-        {
-            string remoteRepo = $"{Globals.RepositoryBaseUrl}/{org}/{repository}.git";
-            var cloneOptions = new CloneOptions
-            {
-                CredentialsProvider = (a, b, c) => new UsernamePasswordCredentials 
-                { 
-                    Username = Globals.GiteaToken,
-                    Password = string.Empty
-                }
-            };
-
-            return LibGit2Sharp.Repository.Clone(remoteRepo, localRepoPath, cloneOptions);
         }
 
         /// <summary>
