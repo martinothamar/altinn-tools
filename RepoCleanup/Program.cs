@@ -1,13 +1,8 @@
 ﻿using System;
-using System.Collections.Generic;
-
-using System.Linq;
 using System.Net.Http;
-using System.Text.Json;
 using System.Threading.Tasks;
 
 using RepoCleanup.Functions;
-using RepoCleanup.Models;
 
 namespace RepoCleanup
 {
@@ -30,7 +25,7 @@ namespace RepoCleanup
             Console.WriteLine("4) Import organizations from json file");
             Console.WriteLine("5) Create repository for organisation(s)");
             Console.WriteLine("6) Add existing team to repository for organisation(s)");
-            Console.WriteLine("7) Migrate Altinn II XSD Schema");
+            Console.WriteLine("7) Migrate Altinn II XSD Schema for organisation(s)");
             Console.WriteLine("9) Exit");
             Console.Write("\r\nSelect an option: ");
 
@@ -55,7 +50,7 @@ namespace RepoCleanup
                     await AddTeamToRepoFunction.Run();
                     return;
                 case "7":
-                    await MigrateXsdSchemas.Run();
+                    await MigrateXsdSchemasFunction.Run();
                     return;
                 case "9":
                 default:
@@ -80,7 +75,7 @@ namespace RepoCleanup
                     url = "https://altinn.studio/repos/api/v1/";
                     break;
                 case Enums.Environment.Local:
-                    url = "http://altinn3/repos/api/v1/";
+                    url = "http://altinn3.no/repos/api/v1/";
                     break;
                 default:
                     SelectEnvironment();
@@ -92,6 +87,25 @@ namespace RepoCleanup
             client.BaseAddress = new Uri(url);
             client.DefaultRequestHeaders.Add("Authorization", $"token {token}");
             Globals.Client = client;
+            Globals.GiteaToken = token;
+            Globals.RepositoryBaseUrl = GetRepositoryBaseUrl(env);
+        }
+
+        private static string GetRepositoryBaseUrl(Enums.Environment env)
+        {
+            switch (env)
+            {
+                case Enums.Environment.Development:
+                    return "https://dev.altinn.studio/repos/";
+                case Enums.Environment.Staging:
+                    return "https://staging.altinn.studio/repos/";
+                case Enums.Environment.Production:
+                    return "https://altinn.studio/repos/";
+                case Enums.Environment.Local:
+                    return "http://altinn3.no/repos/";
+            }
+            
+            return string.Empty;
         }
 
         private static Enums.Environment SelectEnvironment()
@@ -102,6 +116,7 @@ namespace RepoCleanup
             Console.WriteLine("1) Development");
             Console.WriteLine("2) Staging");
             Console.WriteLine("3) Production");
+            Console.WriteLine("4) Local (altinn3.no)");
             Console.WriteLine();
             Console.Write("Select an option: ");
 

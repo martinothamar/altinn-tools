@@ -15,7 +15,7 @@ namespace RepoCleanup.Models
 
         public string ServiceCode { get; set; }
 
-        public string ServiceEditionCode { get; set; }
+        public int ServiceEditionCode { get; set; }
 
         public DateTime ValidFrom { get; set; }
 
@@ -23,8 +23,8 @@ namespace RepoCleanup.Models
 
         public string ServiceType { get; set; }
 
-        public string EnterpriseUserEnabled { get; set; }
+        public bool EnterpriseUserEnabled { get; set; }
 
-        public List<AltinnFormMetaData> Forms { get; set; }
+        public List<Altinn2Form> Forms { get; set; }
     }
 }
