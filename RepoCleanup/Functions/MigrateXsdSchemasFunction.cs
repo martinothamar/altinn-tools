@@ -44,12 +44,11 @@ namespace RepoCleanup.Functions
 
                 string repoName = $"{organisation}-datamodels";
                 string repoFolder = $"{orgFolder}\\{repoName}";
+                string remotePath = $"{Globals.RepositoryBaseUrl}/{organisation}/{repoName}";
 
                 if (!Directory.Exists(repoFolder))
                 {
-                    CloneGitRepositoryCommand cloneGitRepositoryCommand = new CloneGitRepositoryCommand(
-                        $"{Globals.RepositoryBaseUrl}/{organisation}/{repoName}.git",
-                        repoFolder);
+                    CloneGitRepositoryCommand cloneGitRepositoryCommand = new (remotePath, repoFolder, Globals.GiteaToken);
                     CloneGitRepositoryCommandHandler.Handle(cloneGitRepositoryCommand);
                 }
 
@@ -74,7 +73,6 @@ namespace RepoCleanup.Functions
 
                     string serviceName = $"{service.ServiceCode}-{service.ServiceEditionCode}" 
                         + $"-{service.ServiceName.AsFileName(false).Trim(' ', '.', ',')}";
-
                     string serviceDirectory = $"{repoFolder}\\altinn2\\{serviceName}";
 
                     Directory.CreateDirectory(serviceDirectory);
@@ -103,7 +101,8 @@ namespace RepoCleanup.Functions
                     var commitIfChangesCommandHandler = new CommitChangesCommandHandler(new GiteaService());
                     await commitIfChangesCommandHandler.Handle(commitIfChangesCommand);
 
-                    await Push(organisation, repoName, repoFolder);
+                    PushChangesCommand pushChangesCommand = new PushChangesCommand(remotePath, repoFolder, Globals.GiteaToken);
+                    PushChangesCommandHandler.Handle(pushChangesCommand);
                 }
             }
 
@@ -126,44 +125,6 @@ namespace RepoCleanup.Functions
 
             return basePath;
         }
-
-        /// <summary>
-        /// Push commits to repository
-        /// </summary>
-        /// <param name="org">Unique identifier of the organisation responsible for the app.</param>
-        /// <param name="repository">The name of the repository</param>
-        private static async Task<bool> Push(string org, string repository, string localRepoPath)
-        {
-            bool pushSuccess = true;
-            using (LibGit2Sharp.Repository repo = new LibGit2Sharp.Repository(localRepoPath))
-            {
-                string remoteRepo = $"{Globals.RepositoryBaseUrl}/{org}/{repository}";
-                Remote remote = repo.Network.Remotes["origin"];
-
-                if (!remote.PushUrl.Equals(remoteRepo))
-                {
-                    // This is relevant when we switch beteen running designer in local or in docker. The remote URL changes.
-                    // Requires adminstrator access to update files.
-                    repo.Network.Remotes.Update("origin", r => r.Url = remoteRepo);
-                }
-
-                PushOptions options = new PushOptions
-                {
-                    OnPushStatusError = pushError =>
-                    {
-                        pushSuccess = false;
-                    }
-                };
-                options.CredentialsProvider = (_url, _user, _cred) =>
-                        new UsernamePasswordCredentials { Username = Globals.GiteaToken, Password = string.Empty };
-
-                repo.Network.Push(remote, @"refs/heads/master", options);
-            }
-
-            return await Task.FromResult(pushSuccess);
-        }
-
-
 
         /// <summary>
         /// List the GIT status of a repository

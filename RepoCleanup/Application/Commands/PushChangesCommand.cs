@@ -1,8 +1,8 @@
 ﻿namespace RepoCleanup.Application.Commands
 {
-    public class CloneGitRepositoryCommand
+    public class PushChangesCommand
     {
-        public CloneGitRepositoryCommand(string remotePath, string localPath, string token)
+        public PushChangesCommand(string remotePath, string localPath, string token)
         {
             RemotePath = remotePath;
             LocalPath = localPath;

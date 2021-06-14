@@ -12,12 +12,12 @@ namespace RepoCleanup.Application.CommandHandlers
             {
                 CredentialsProvider = (a, b, c) => new UsernamePasswordCredentials
                 {
-                    Username = Globals.GiteaToken,
+                    Username = command.Token,
                     Password = string.Empty
                 }
             };
 
-            Repository.Clone(command.RemotePath, command.LocalPath, cloneOptions);
+            Repository.Clone(command.RemotePath + ".git", command.LocalPath, cloneOptions);
         }
     }
 }
