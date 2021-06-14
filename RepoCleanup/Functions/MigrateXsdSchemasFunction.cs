@@ -99,7 +99,10 @@ namespace RepoCleanup.Functions
 
                 if (changedFiles.Count > 0)
                 {
-                    await Commit(repoFolder);
+                    var commitIfChangesCommand = new CommitChangesCommand(repoFolder);
+                    var commitIfChangesCommandHandler = new CommitChangesCommandHandler(new GiteaService());
+                    await commitIfChangesCommandHandler.Handle(commitIfChangesCommand);
+
                     await Push(organisation, repoName, repoFolder);
                 }
             }
@@ -113,7 +116,7 @@ namespace RepoCleanup.Functions
         private static string CollectMigrationWorkFolder()
         {
             Console.WriteLine("This operation requires a folder to which it can clone the datamodels repositories.");
-            string basePath = SharedFunctionSnippets.CollectInput("Provide folder name (must exist): ");
+            string basePath = SharedFunctionSnippets.CollectInput("Provide folder name (should be empty): ");
 
             if (!Directory.Exists(basePath))
             {
@@ -122,24 +125,6 @@ namespace RepoCleanup.Functions
             }
 
             return basePath;
-        }
-
-        /// <summary>
-        /// Commit changes for repository
-        /// </summary>
-        private static async Task Commit(string localRepoPath)
-        {
-            using (LibGit2Sharp.Repository repo = new LibGit2Sharp.Repository(localRepoPath))
-            {
-                Commands.Stage(repo, "*");
-
-                GiteaService giteaService = new GiteaService();
-
-                User user = await giteaService.GetAuthenticatedUser();
-                Signature author = new Signature(user.Username, "@jugglingnutcase", DateTime.Now);
-
-                Commit commit = repo.Commit("Added XSD schemas copied from Altinn II", author, author);
-            }
         }
 
         /// <summary>
@@ -225,7 +210,7 @@ namespace RepoCleanup.Functions
 
         private static bool CheckIfAllOrgs()
         {
-            Console.Write("\r\nShould the team be created for all organisations? (Y)es / (N)o: ");
+            Console.Write("\r\nShould schema migration be done for all organisations? (Y)es / (N)o: ");
             
             switch (Console.ReadLine().ToUpper())
             {
