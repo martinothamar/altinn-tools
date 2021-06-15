@@ -119,6 +119,7 @@ namespace RepoCleanup.Functions
             List<string> repoContent = new List<string>();
             using (var repo = new LibGit2Sharp.Repository(localRepoPath))
             {
+                Commands.Stage(repo, "*");
                 RepositoryStatus status = repo.RetrieveStatus(new StatusOptions());
                 foreach (StatusEntry item in status)
                 {

@@ -22,8 +22,6 @@ namespace RepoCleanup.Application.CommandHandlers
         {
             using (var repo = new LibGit2Sharp.Repository(command.LocalPath))
             {
-                LibGit2Sharp.Commands.Stage(repo, "*");
-
                 GiteaService giteaService = new GiteaService();
 
                 User user = await _giteaService.GetAuthenticatedUser();
