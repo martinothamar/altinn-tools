@@ -30,68 +30,14 @@ namespace RepoCleanup.Functions
 
             logger.AddInformation($"Started!");
             logger.AddInformation($"Using '{basePath}' as base path for all organisations");
-            logger.AddNothing();
 
-            List<Altinn2Service> allReportingServices = await AltinnServiceRepository.GetReportingServices();
-
-            foreach (string organisation in organisations)
-            {
-                List<Altinn2Service> organisationReportingServices =
-                    allReportingServices.Where(s => s.ServiceOwnerCode.ToLower() == organisation).ToList();
-
-                string orgFolder = $"{basePath}\\{organisation}";
-                string repoName = $"{organisation}-datamodels";
-                string repoFolder = $"{orgFolder}\\{repoName}";
-                string remotePath = $"{Globals.RepositoryBaseUrl}/{organisation}/{repoName}";
-
-                Directory.CreateDirectory(orgFolder);
-
-                if (!Directory.Exists(repoFolder))
-                {
-                    CloneGitRepositoryCommand cloneGitRepositoryCommand = new(remotePath, repoFolder, Globals.GiteaToken);
-                    CloneGitRepositoryCommandHandler.Handle(cloneGitRepositoryCommand);
-                }
-
-                await CreateFolderStructure(repoFolder);
-
-                foreach (Altinn2Service service in organisationReportingServices)
-                {
-                    DownloadXsdsForServiceCommand downloadXsdsForServiceCommand = new(service, repoFolder, logger);
-                    await DownloadXsdsForServiceCommandHandler.Handle(downloadXsdsForServiceCommand);
-                }
-
-                List<string> changedFiles = Status(repoFolder);
-
-                if (changedFiles.Count > 0)
-                {
-                    var commitIfChangesCommand = new CommitChangesCommand(repoFolder);
-                    var commitIfChangesCommandHandler = new CommitChangesCommandHandler(new GiteaService());
-                    await commitIfChangesCommandHandler.Handle(commitIfChangesCommand);
-
-                    PushChangesCommand pushChangesCommand = new PushChangesCommand(remotePath, repoFolder, Globals.GiteaToken);
-                    PushChangesCommandHandler.Handle(pushChangesCommand);
-                }
-            }
+            MigrateAltinn2FormSchemasCommandHandler migrateAltinn2FormSchemasCommandHandler = new(new GiteaService(), logger);
+            MigrateAltinn2FormSchemasCommand migrateAltinn2FormSchemasCommand = new(organisations, basePath);
+            await migrateAltinn2FormSchemasCommandHandler.Handle(migrateAltinn2FormSchemasCommand);
 
             logger.WriteLog();
-            await Task.Delay(1);
 
             return;
-        }
-
-        private static async Task CreateFolderStructure(string repoFolder)
-        {
-            Directory.CreateDirectory($"{repoFolder}\\.altinnstudio");
-            Directory.CreateDirectory($"{repoFolder}\\altinn2");
-            Directory.CreateDirectory($"{repoFolder}\\shared");
-
-            await System.IO.File.WriteAllTextAsync(
-                $"{repoFolder}\\.altinnstudio\\settings.json",
-                "{\n  \"repotype\" : \"datamodels\"\n}");
-
-            await System.IO.File.WriteAllTextAsync(
-                $"{repoFolder}\\shared\\README.md",
-                "# Shared models");
         }
 
         private static string CollectMigrationWorkFolder()
@@ -108,33 +54,11 @@ namespace RepoCleanup.Functions
             return basePath;
         }
 
-        /// <summary>
-        /// List the GIT status of a repository
-        /// </summary>
-        /// <param name="org">Unique identifier of the organisation responsible for the app.</param>
-        /// <param name="repository">The name of the repository</param>
-        /// <returns>A list of changed files in the repository</returns>
-        public static List<string> Status(string localRepoPath)
-        {
-            List<string> repoContent = new List<string>();
-            using (var repo = new LibGit2Sharp.Repository(localRepoPath))
-            {
-                Commands.Stage(repo, "*");
-                RepositoryStatus status = repo.RetrieveStatus(new StatusOptions());
-                foreach (StatusEntry item in status)
-                {
-                    repoContent.Add(item.FilePath);
-                }
-            }
-
-            return repoContent;
-        }
-
         private static async Task<List<string>> CollectOrgInfo()
         {
-            List<string> orgs = new List<string>();
+            List<string> orgs = new();
 
-            bool updateAllOrgs = CheckIfAllOrgs();
+            bool updateAllOrgs = SharedFunctionSnippets.ShouldThisApplyToAllOrgs();
 
             if (updateAllOrgs)
             {
@@ -150,21 +74,6 @@ namespace RepoCleanup.Functions
             }
 
             return orgs;
-        }
-
-        private static bool CheckIfAllOrgs()
-        {
-            Console.Write("\r\nShould schema migration be done for all organisations? (Y)es / (N)o: ");
-            
-            switch (Console.ReadLine().ToUpper())
-            {
-                case "Y":
-                    return true;
-                case "N":
-                    return  false;
-                default:
-                    return CheckIfAllOrgs();
-            }
         }
     }
 }

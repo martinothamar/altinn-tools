@@ -41,7 +41,7 @@ namespace RepoCleanup.Functions
 
         public static bool ShouldThisApplyToAllOrgs()
         {
-            return YesNo("Should this apply to all organisations ?");
+            return YesNo("Should this apply to all organisations?");
         }
 
         public static void ConfirmWithExit(string confirmMessage, string exitMessage)
