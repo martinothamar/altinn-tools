@@ -36,61 +36,28 @@ namespace RepoCleanup.Functions
 
             foreach (string organisation in organisations)
             {
-                List<Altinn2Service> organisationReportingServices = 
+                List<Altinn2Service> organisationReportingServices =
                     allReportingServices.Where(s => s.ServiceOwnerCode.ToLower() == organisation).ToList();
 
                 string orgFolder = $"{basePath}\\{organisation}";
-                Directory.CreateDirectory(orgFolder);
-
                 string repoName = $"{organisation}-datamodels";
                 string repoFolder = $"{orgFolder}\\{repoName}";
                 string remotePath = $"{Globals.RepositoryBaseUrl}/{organisation}/{repoName}";
 
+                Directory.CreateDirectory(orgFolder);
+
                 if (!Directory.Exists(repoFolder))
                 {
-                    CloneGitRepositoryCommand cloneGitRepositoryCommand = new (remotePath, repoFolder, Globals.GiteaToken);
+                    CloneGitRepositoryCommand cloneGitRepositoryCommand = new(remotePath, repoFolder, Globals.GiteaToken);
                     CloneGitRepositoryCommandHandler.Handle(cloneGitRepositoryCommand);
                 }
 
-                Directory.CreateDirectory($"{repoFolder}\\.altinnstudio");
-                Directory.CreateDirectory($"{repoFolder}\\altinn2");
-                Directory.CreateDirectory($"{repoFolder}\\shared");
-
-                await System.IO.File.WriteAllTextAsync(
-                    $"{repoFolder}\\.altinnstudio\\settings.json", 
-                    "{\n  \"repotype\" : \"datamodels\"\n}");
-
-                await System.IO.File.WriteAllTextAsync(
-                    $"{repoFolder}\\shared\\README.md",
-                    "# Shared models");
+                await CreateFolderStructure(repoFolder);
 
                 foreach (Altinn2Service service in organisationReportingServices)
                 {
-                    logger.AddNothing();
-                    logger.AddInformation($"Service: {service.ServiceName}");
-
-                    Altinn2ReportingService reportingService = await AltinnServiceRepository.GetReportingService(service);
-
-                    string serviceName = $"{service.ServiceCode}-{service.ServiceEditionCode}" 
-                        + $"-{service.ServiceName.AsFileName(false).Trim(' ', '.', ',')}";
-                    string serviceDirectory = $"{repoFolder}\\altinn2\\{serviceName}";
-
-                    Directory.CreateDirectory(serviceDirectory);
-
-                    foreach (Altinn2Form formMetaData in reportingService.FormsMetaData)
-                    {
-                        XDocument xsdDocument = await AltinnServiceRepository.GetFormXsd(service, formMetaData);
-                        if (xsdDocument == null)
-                        {
-                            continue;
-                        }
-
-                        string fileName = $"{serviceDirectory}\\{formMetaData.DataFormatID}-{formMetaData.DataFormatVersion}.xsd";
-                        using (FileStream fileStream = new FileStream(fileName, FileMode.OpenOrCreate))
-                        {
-                            await xsdDocument.SaveAsync(fileStream, SaveOptions.None, CancellationToken.None);
-                        }
-                    }
+                    DownloadXsdsForServiceCommand downloadXsdsForServiceCommand = new(service, repoFolder, logger);
+                    await DownloadXsdsForServiceCommandHandler.Handle(downloadXsdsForServiceCommand);
                 }
 
                 List<string> changedFiles = Status(repoFolder);
@@ -110,6 +77,21 @@ namespace RepoCleanup.Functions
             await Task.Delay(1);
 
             return;
+        }
+
+        private static async Task CreateFolderStructure(string repoFolder)
+        {
+            Directory.CreateDirectory($"{repoFolder}\\.altinnstudio");
+            Directory.CreateDirectory($"{repoFolder}\\altinn2");
+            Directory.CreateDirectory($"{repoFolder}\\shared");
+
+            await System.IO.File.WriteAllTextAsync(
+                $"{repoFolder}\\.altinnstudio\\settings.json",
+                "{\n  \"repotype\" : \"datamodels\"\n}");
+
+            await System.IO.File.WriteAllTextAsync(
+                $"{repoFolder}\\shared\\README.md",
+                "# Shared models");
         }
 
         private static string CollectMigrationWorkFolder()
