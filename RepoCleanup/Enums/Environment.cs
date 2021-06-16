@@ -4,6 +4,7 @@
     {
         Development, 
         Staging, 
-        Production
+        Production,
+        Local
     }
 }

@@ -10,6 +10,10 @@ namespace RepoCleanup
 
         public static bool IsDryRun { get; set; } = true;
 
+        public static string GiteaToken { get; internal set; }
+
+        public static string RepositoryBaseUrl { get; internal set; }
+
         public static JsonSerializerOptions SerializerOptions = new JsonSerializerOptions
         {
             WriteIndented = true,
