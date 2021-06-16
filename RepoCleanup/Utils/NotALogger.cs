@@ -29,6 +29,15 @@ namespace RepoCleanup.Utils
             _logBuilder.AppendLine(message);
         }
 
+        public void AddError(Exception exception)
+        {
+            string message = $"{DateTime.Now} - ERRR - {exception.Message}";
+            message += $"{DateTime.Now} - ERRR - {exception.StackTrace}";
+
+            Console.WriteLine(message);
+            _logBuilder.AppendLine(message);
+        }
+
         public void WriteLog()
         {
             using (StreamWriter file = new StreamWriter(_logFile, true))

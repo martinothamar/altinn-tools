@@ -31,13 +31,21 @@ namespace RepoCleanup.Functions
             logger.AddInformation($"Started!");
             logger.AddInformation($"Using '{basePath}' as base path for all organisations");
 
-            MigrateAltinn2FormSchemasCommandHandler migrateAltinn2FormSchemasCommandHandler = new(new GiteaService(), logger);
-            MigrateAltinn2FormSchemasCommand migrateAltinn2FormSchemasCommand = new(organisations, basePath);
-            await migrateAltinn2FormSchemasCommandHandler.Handle(migrateAltinn2FormSchemasCommand);
-
-            logger.WriteLog();
-
-            return;
+            try
+            {
+                MigrateAltinn2FormSchemasCommandHandler migrateAltinn2FormSchemasCommandHandler = new(new GiteaService(), logger);
+                MigrateAltinn2FormSchemasCommand migrateAltinn2FormSchemasCommand = new(organisations, basePath);
+                await migrateAltinn2FormSchemasCommandHandler.Handle(migrateAltinn2FormSchemasCommand);
+            }
+            catch (Exception exception)
+            {
+                logger.AddError(exception);
+                throw;
+            }
+            finally
+            {
+                logger.WriteLog();
+            }
         }
 
         private static string CollectMigrationWorkFolder()
