@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
@@ -48,13 +49,25 @@ namespace RepoCleanup.Application.CommandHandlers
 
                 await CreateFolderStructure(repoFolder);
 
+                StringBuilder reportBuilder = new();
+                reportBuilder.AppendLine("# Migration report");
+                reportBuilder.AppendLine($"\nMigration performed '{DateTime.Now}'");
+
                 List<Altinn2Service> organisationReportingServices =
                     allReportingServices.Where(s => s.ServiceOwnerCode.ToLower() == organisation).ToList();
+
+                if (organisationReportingServices.Count <= 0)
+                {
+                    reportBuilder.AppendLine("\nNo services found in Altinn 2 production.");
+                }
 
                 foreach (Altinn2Service service in organisationReportingServices)
                 {
                     await DownloadFormSchemasForService(service, repoFolder);
+                    reportBuilder.AppendLine($"\nDownloaded XSD schemas for forms in service: {service.ServiceName}");
                 }
+
+                await System.IO.File.WriteAllTextAsync($"{repoFolder}\\altinn2\\readme.md", reportBuilder.ToString());
 
                 List<string> changedFiles = Status(repoFolder);
 
