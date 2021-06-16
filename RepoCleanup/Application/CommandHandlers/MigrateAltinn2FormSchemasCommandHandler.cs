@@ -86,7 +86,8 @@ namespace RepoCleanup.Application.CommandHandlers
             Altinn2ReportingService reportingService = await AltinnServiceRepository.GetReportingService(service);
 
             string serviceName = $"{service.ServiceCode}-{service.ServiceEditionCode}"
-                + $"-{service.ServiceName.AsFileName(false).Trim(' ', '.', ',')}";
+                + $"-{service.ServiceName.AsFileName(false)}";
+            serviceName = serviceName.Substring(0, Math.Min(serviceName.Length, 80)).TrimEnd(' ', '.', ',');
             string serviceDirectory = $"{repositoryFolder}\\altinn2\\{serviceName}";
 
             Directory.CreateDirectory(serviceDirectory);

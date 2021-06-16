@@ -31,7 +31,7 @@ namespace RepoCleanup.Utils
 
         public void AddError(Exception exception)
         {
-            string message = $"{DateTime.Now} - ERRR - {exception.Message}";
+            string message = $"{DateTime.Now} - ERRR - {exception.Message}\r\n";
             message += $"{DateTime.Now} - ERRR - {exception.StackTrace}";
 
             Console.WriteLine(message);
