@@ -62,21 +62,19 @@ namespace RepoCleanup.Application.CommandHandlers
                 {
                     reportBuilder.AppendLine("\nNo services found in Altinn 2 production.");
                 }
-                else
-                {
-                    reportBuilder.AppendLine();
-                }
 
                 foreach (Altinn2Service service in organisationReportingServices)
                 {
                     HashSet<string> schemaList = await DownloadFormSchemasForService(service, repoFolder);
                     
-                    reportBuilder.AppendLine($"XSD schemas for service: {service.ServiceName}:");
+                    reportBuilder.AppendLine($"{service.ServiceName}:");
                     
                     foreach (string schema in schemaList)
                     {
                         reportBuilder.AppendLine($" - {schema}");
                     }
+
+                    reportBuilder.AppendLine();
                 }
 
                 await AddStudioFolder(repoFolder);
