@@ -51,35 +51,22 @@ namespace RepoCleanup.Application.CommandHandlers
 
                 await AddRepoSettings(repoFolder);
 
-                StringBuilder reportBuilder = new();
-                reportBuilder.AppendLine("# Migration report");
-                reportBuilder.AppendLine($"\nMigration performed '{DateTime.Now}'");
+                Dictionary<string, string> schemaList = new Dictionary<string, string>();
 
                 List<Altinn2Service> organisationReportingServices =
                     allReportingServices.Where(s => s.ServiceOwnerCode.ToLower() == organisation).ToList();
 
-                if (organisationReportingServices.Count <= 0)
-                {
-                    reportBuilder.AppendLine("\nNo services found in Altinn 2 production.");
-                }
-
                 foreach (Altinn2Service service in organisationReportingServices)
                 {
-                    HashSet<string> schemaList = await DownloadFormSchemasForService(service, repoFolder);
-                    
-                    reportBuilder.AppendLine($"{service.ServiceName}:");
-                    
-                    foreach (string schema in schemaList)
-                    {
-                        reportBuilder.AppendLine($" - {schema}");
-                    }
+                    Dictionary<string, string> serviceSchemas = await DownloadFormSchemasForService(service, repoFolder);
 
-                    reportBuilder.AppendLine();
+                    schemaList = schemaList.Concat(serviceSchemas.Where(kvp => !schemaList.ContainsKey(kvp.Key)))
+                        .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
                 }
 
                 await AddStudioFolder(repoFolder);
 
-                await System.IO.File.WriteAllTextAsync($"{repoFolder}\\MIGRATION_REPORT.md", reportBuilder.ToString());
+                await WriteReport(repoFolder, schemaList);
 
                 List<string> changedFiles = Status(repoFolder);
 
@@ -91,13 +78,34 @@ namespace RepoCleanup.Application.CommandHandlers
             }
         }
 
-        private async Task<HashSet<string>> DownloadFormSchemasForService(Altinn2Service service, string repositoryFolder)
+        private static async Task WriteReport(string repoFolder, Dictionary<string, string> schemaList)
+        {
+            StringBuilder reportBuilder = new();
+            reportBuilder.AppendLine("# List of schemas imported from Altinn II");
+            reportBuilder.AppendLine();
+            reportBuilder.AppendLine($"Import was performed: '{DateTime.Now}'");
+            reportBuilder.AppendLine();
+            reportBuilder.AppendLine($"(The list is not automatically maintained.)");
+            reportBuilder.AppendLine();
+
+            foreach (var schema in schemaList.OrderBy(kvp => kvp.Value))
+            {
+                reportBuilder.Append($"- {schema.Value} ");
+                reportBuilder.Append($"[{schema.Key.Split('\\').Last()}]");
+                reportBuilder.Append($"(.{schema.Key.Replace('\\', '/')})");
+                reportBuilder.Append('\n');
+            }
+
+            await System.IO.File.WriteAllTextAsync($"{repoFolder}\\README.md", reportBuilder.ToString());
+        }
+
+        private async Task<Dictionary<string, string>> DownloadFormSchemasForService(Altinn2Service service, string repositoryFolder)
         {
             _logger.AddInformation($"Service: {service.ServiceName}");
 
             Altinn2ReportingService reportingService = await AltinnServiceRepository.GetReportingService(service);
 
-            HashSet<string> schemaList = new HashSet<string>();
+            Dictionary<string, string> schemas = new Dictionary<string, string>();
 
             foreach (Altinn2Form formMetaData in reportingService.FormsMetaData)
             {
@@ -129,10 +137,13 @@ namespace RepoCleanup.Application.CommandHandlers
 
                 _logger.AddInformation($"Schema: {formMetaData.DataFormatID}-{formMetaData.DataFormatVersion} Downloaded.");
 
-                schemaList.Add(filePath.Substring(repositoryFolder.Length));
+                if (!schemas.ContainsKey(filePath.Substring(repositoryFolder.Length)))
+                {
+                    schemas.Add(filePath.Substring(repositoryFolder.Length), formMetaData.FormName ?? "no name");
+                }
             }
 
-            return schemaList;
+            return schemas;
         }
 
         private string FindProvider(XDocument xsdDocument, string dataFormatProviderType)
