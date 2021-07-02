@@ -96,6 +96,11 @@ namespace RepoCleanup.Application.CommandHandlers
                 reportBuilder.Append('\n');
             }
 
+            if (schemaList.Count == 0)
+            {
+                reportBuilder.AppendLine($"Found no forms in Altinn II.");
+            }
+
             await System.IO.File.WriteAllTextAsync($"{repoFolder}\\README.md", reportBuilder.ToString());
         }
 
