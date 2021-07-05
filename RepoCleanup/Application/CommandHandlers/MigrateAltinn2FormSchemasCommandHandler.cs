@@ -5,7 +5,9 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Xml;
 using System.Xml.Linq;
+using System.Xml.XPath;
 
 using LibGit2Sharp;
 
@@ -47,27 +49,24 @@ namespace RepoCleanup.Application.CommandHandlers
                     CloneRepository(repoFolder, remotePath);
                 }
 
-                await CreateFolderStructure(repoFolder);
+                await AddRepoSettings(repoFolder);
 
-                StringBuilder reportBuilder = new();
-                reportBuilder.AppendLine("# Migration report");
-                reportBuilder.AppendLine($"\nMigration performed '{DateTime.Now}'");
+                Dictionary<string, string> schemaList = new Dictionary<string, string>();
 
                 List<Altinn2Service> organisationReportingServices =
                     allReportingServices.Where(s => s.ServiceOwnerCode.ToLower() == organisation).ToList();
 
-                if (organisationReportingServices.Count <= 0)
-                {
-                    reportBuilder.AppendLine("\nNo services found in Altinn 2 production.");
-                }
-
                 foreach (Altinn2Service service in organisationReportingServices)
                 {
-                    await DownloadFormSchemasForService(service, repoFolder);
-                    reportBuilder.AppendLine($"\nDownloaded XSD schemas for forms in service: {service.ServiceName}");
+                    Dictionary<string, string> serviceSchemas = await DownloadFormSchemasForService(service, repoFolder);
+
+                    schemaList = schemaList.Concat(serviceSchemas.Where(kvp => !schemaList.ContainsKey(kvp.Key)))
+                        .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
                 }
 
-                await System.IO.File.WriteAllTextAsync($"{repoFolder}\\altinn2\\readme.md", reportBuilder.ToString());
+                await AddStudioFolder(repoFolder);
+
+                await WriteReport(repoFolder, schemaList);
 
                 List<string> changedFiles = Status(repoFolder);
 
@@ -79,51 +78,112 @@ namespace RepoCleanup.Application.CommandHandlers
             }
         }
 
-        private async Task DownloadFormSchemasForService(Altinn2Service service, string repositoryFolder)
+        private static async Task WriteReport(string repoFolder, Dictionary<string, string> schemaList)
+        {
+            StringBuilder reportBuilder = new();
+            reportBuilder.AppendLine("# List of schemas imported from Altinn II");
+            reportBuilder.AppendLine();
+            reportBuilder.AppendLine($"Import was performed: '{DateTime.Now}'");
+            reportBuilder.AppendLine();
+            reportBuilder.AppendLine($"(The list is not automatically maintained.)");
+            reportBuilder.AppendLine();
+
+            foreach (var schema in schemaList.OrderBy(kvp => kvp.Value))
+            {
+                reportBuilder.Append($"- {schema.Value} ");
+                reportBuilder.Append($"[{schema.Key.Split('\\').Last()}]");
+                reportBuilder.Append($"(.{schema.Key.Replace('\\', '/')})");
+                reportBuilder.Append('\n');
+            }
+
+            if (schemaList.Count == 0)
+            {
+                reportBuilder.AppendLine($"Found no forms in Altinn II.");
+            }
+
+            await System.IO.File.WriteAllTextAsync($"{repoFolder}\\README.md", reportBuilder.ToString());
+        }
+
+        private async Task<Dictionary<string, string>> DownloadFormSchemasForService(Altinn2Service service, string repositoryFolder)
         {
             _logger.AddInformation($"Service: {service.ServiceName}");
 
             Altinn2ReportingService reportingService = await AltinnServiceRepository.GetReportingService(service);
 
-            string serviceName = $"{service.ServiceCode}-{service.ServiceEditionCode}"
-                + $"-{service.ServiceName.AsFileName(false)}";
-            serviceName = serviceName.Substring(0, Math.Min(serviceName.Length, 80)).TrimEnd(' ', '.', ',');
-            string serviceDirectory = $"{repositoryFolder}\\altinn2\\{serviceName}";
-
-            Directory.CreateDirectory(serviceDirectory);
+            Dictionary<string, string> schemas = new Dictionary<string, string>();
 
             foreach (Altinn2Form formMetaData in reportingService.FormsMetaData)
             {
                 XDocument xsdDocument = await AltinnServiceRepository.GetFormXsd(service, formMetaData);
                 if (xsdDocument == null)
                 {
-                    _logger.AddInformation($"DataFormatId: {formMetaData.DataFormatID}-{formMetaData.DataFormatVersion} NOT FOUND");
+                    _logger.AddInformation($"Schema: {formMetaData.DataFormatID}-{formMetaData.DataFormatVersion} NOT FOUND");
                     continue;
                 }
 
-                string fileName = $"{serviceDirectory}\\{formMetaData.DataFormatID}-{formMetaData.DataFormatVersion}.xsd";
-                using (FileStream fileStream = new FileStream(fileName, FileMode.OpenOrCreate))
+                string providerName = FindProvider(xsdDocument, formMetaData.DataFormatProviderType);
+                string schemaVersionFolder = $"{repositoryFolder}\\{providerName}\\" 
+                    + $"{formMetaData.DataFormatID}\\{formMetaData.DataFormatVersion}";
+
+                Directory.CreateDirectory(schemaVersionFolder);
+
+                string fileName = CreatSchemaFileName(
+                    formMetaData.DataFormatProviderType, formMetaData.DataFormatID, formMetaData.DataFormatVersion);
+                string filePath = $"{schemaVersionFolder}\\{fileName}";
+
+                // The schema might have been downloaded under a separate service.
+                if (!System.IO.File.Exists(filePath))
                 {
-                    await xsdDocument.SaveAsync(fileStream, SaveOptions.None, CancellationToken.None);
+                    using (FileStream fileStream = new (filePath, FileMode.OpenOrCreate))
+                    {
+                        await xsdDocument.SaveAsync(fileStream, SaveOptions.None, CancellationToken.None);
+                    }
                 }
-                
-                _logger.AddInformation($"DataFormatId: {formMetaData.DataFormatID}-{formMetaData.DataFormatVersion} Downloaded.");
+
+                _logger.AddInformation($"Schema: {formMetaData.DataFormatID}-{formMetaData.DataFormatVersion} Downloaded.");
+
+                if (!schemas.ContainsKey(filePath.Substring(repositoryFolder.Length)))
+                {
+                    schemas.Add(filePath.Substring(repositoryFolder.Length), formMetaData.FormName ?? "no name");
+                }
+            }
+
+            return schemas;
+        }
+
+        private string FindProvider(XDocument xsdDocument, string dataFormatProviderType)
+        {
+            XmlNamespaceManager namespaceManager = new XmlNamespaceManager(new NameTable());
+            namespaceManager.AddNamespace("xsd", "http://www.w3.org/2001/XMLSchema");
+
+            XElement dataFormatProviderElement = xsdDocument.XPathSelectElement(
+                "xsd:schema/xsd:complexType/xsd:attribute[@name='dataFormatProvider']", 
+                namespaceManager);
+
+            string foundProvider = dataFormatProviderType;
+            if (dataFormatProviderElement != null)
+            {
+                foundProvider = dataFormatProviderElement.Attribute("fixed").Value;
+            }
+
+            switch (foundProvider.ToUpper())
+            {
+                case "OR":
+                    return "oppgaveregisteret";
+                default:
+                    return foundProvider.ToLower();
             }
         }
 
-        private static async Task CreateFolderStructure(string repoFolder)
+        private static string CreatSchemaFileName(string dataFormatProviderType, string dataFormatID, int dataFormatVersion)
         {
-            Directory.CreateDirectory($"{repoFolder}\\.altinnstudio");
-            Directory.CreateDirectory($"{repoFolder}\\altinn2");
-            Directory.CreateDirectory($"{repoFolder}\\shared");
-
-            await System.IO.File.WriteAllTextAsync(
-                $"{repoFolder}\\.altinnstudio\\settings.json",
-                "{\n  \"repotype\" : \"datamodels\"\n}");
-
-            await System.IO.File.WriteAllTextAsync(
-                $"{repoFolder}\\shared\\README.md",
-                "# Shared models");
+            switch (dataFormatProviderType.ToUpper())
+            {
+                case "OR":
+                    return $"melding-{dataFormatID}-{dataFormatVersion}.xsd";
+                default:
+                    return $"{dataFormatID}-{dataFormatVersion}.xsd";
+            }
         }
 
         private static void CloneRepository(string repoFolder, string remotePath)
@@ -184,6 +244,24 @@ namespace RepoCleanup.Application.CommandHandlers
 
                 repo.Network.Push(remote, @"refs/heads/master", options);
             }
+        }
+
+        private static async Task AddRepoSettings(string repoFolder)
+        {
+            Directory.CreateDirectory($"{repoFolder}\\.altinnstudio");
+
+            await System.IO.File.WriteAllTextAsync(
+                $"{repoFolder}\\.altinnstudio\\settings.json",
+                "{\n  \"repoType\" : \"datamodels\"\n}");
+        }
+
+        private static async Task AddStudioFolder(string repoFolder)
+        {
+            Directory.CreateDirectory($"{repoFolder}\\studio");
+
+            await System.IO.File.WriteAllTextAsync(
+                $"{repoFolder}\\studio\\README.md",
+                "# Studio data models\n\nSchemas created with the data model editor in altinn.studio");
         }
     }
 }
