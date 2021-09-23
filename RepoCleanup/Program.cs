@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Net.Http;
 using System.Threading.Tasks;
-
+using Microsoft.Extensions.Logging;
 using RepoCleanup.Functions;
 
 namespace RepoCleanup
@@ -10,6 +10,8 @@ namespace RepoCleanup
     {
         static async Task Main(string[] args)
         {
+            var logger = Globals.CreateLogger<Program>();
+            logger.LogWarning("this time with config.");
             Console.Clear();
             Console.WriteLine("Altinn Studio Repository cleanup");
             SetUpClient();

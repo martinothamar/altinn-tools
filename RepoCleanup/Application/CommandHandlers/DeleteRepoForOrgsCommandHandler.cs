@@ -36,18 +36,5 @@ namespace RepoCleanup.Application.CommandHandlers
 
             return reposDeletedCounter;
         }
-
-        private CreateRepoOption GetCreateRepoOption(string repoName)
-        {
-            return new CreateRepoOption()
-            {
-                Name = repoName,
-                AutoInit = true,
-                DefaultBranch = "master",
-                Private = false,
-                TrustModel = TrustModel.@default
-            };
-
-        }
     }
 }
