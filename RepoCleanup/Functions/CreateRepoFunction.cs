@@ -1,10 +1,7 @@
 ﻿using RepoCleanup.Application.CommandHandlers;
 using RepoCleanup.Application.Commands;
-using RepoCleanup.Models;
-using RepoCleanup.Services;
+using RepoCleanup.Infrastructure.Clients.Gitea;
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 
 namespace RepoCleanup.Functions
@@ -15,7 +12,7 @@ namespace RepoCleanup.Functions
         {
             SharedFunctionSnippets.WriteHeader("Create new repository for organisation(s)");
 
-            var orgs = await SharedFunctionSnippets.CollectOrgInfo();
+            var orgs = await SharedFunctionSnippets.CollectExistingOrgsInfo();
             var prefixRepoNameWithOrg = SharedFunctionSnippets.ShouldRepoNameBePrefixedWithOrg();
             var repoName = SharedFunctionSnippets.CollectRepoName();
 

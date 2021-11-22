@@ -5,8 +5,8 @@ using System.Threading.Tasks;
 
 using RepoCleanup.Application.Commands;
 using RepoCleanup.Application.CommandHandlers;
-using RepoCleanup.Services;
 using RepoCleanup.Utils;
+using RepoCleanup.Infrastructure.Clients.Gitea;
 
 namespace RepoCleanup.Functions
 {
@@ -20,7 +20,7 @@ namespace RepoCleanup.Functions
             SharedFunctionSnippets.WriteHeader("Migrating XSD Schemas from active services in Altinn II");
 
             string basePath = CollectMigrationWorkFolder();
-            List<string> organisations = await SharedFunctionSnippets.CollectOrgInfo();
+            List<string> organisations = await SharedFunctionSnippets.CollectExistingOrgsInfo();
 
             logger.AddInformation($"Started!");
             logger.AddInformation($"Using '{basePath}' as base path for all organisations");

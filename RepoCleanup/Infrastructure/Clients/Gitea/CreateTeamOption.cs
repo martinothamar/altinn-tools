@@ -1,9 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
-namespace RepoCleanup.Models
+namespace RepoCleanup.Infrastructure.Clients.Gitea
 {
     public enum Permission
     {

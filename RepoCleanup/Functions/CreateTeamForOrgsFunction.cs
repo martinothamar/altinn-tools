@@ -1,5 +1,4 @@
-﻿using RepoCleanup.Models;
-using RepoCleanup.Services;
+﻿using RepoCleanup.Infrastructure.Clients.Gitea;
 using RepoCleanup.Utils;
 using System;
 using System.Collections.Generic;
@@ -32,7 +31,7 @@ namespace RepoCleanup.Functions
             Console.WriteLine("Updating teams. Please wait.");
             foreach (string org in orgsToUpdate)
             {
-                GiteaResponse response = await GiteaService.CreateTeam(org, teamOption);
+                GiteaResponse response = await new GiteaService().CreateTeam(org, teamOption);
 
                 if (response.Success)
                 {
@@ -162,7 +161,6 @@ namespace RepoCleanup.Functions
             {
                 case "Y":
                     return teamOption;
-                case "N":
                 default:
                     Console.Clear();
                     Console.WriteLine("Starting over...");

@@ -1,10 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using RepoCleanup.Models;
-using RepoCleanup.Services;
+using RepoCleanup.Infrastructure.Clients.Gitea;
 using RepoCleanup.Utils;
 
 namespace RepoCleanup.Functions
@@ -15,7 +13,7 @@ namespace RepoCleanup.Functions
         {
             WriteHeader();
 
-            Organisation org = CollectOrgInfo();
+            Organisation org = SharedFunctionSnippets.CollectNewOrgInfo();
 
             await CreateOrgAndTeams(org);
         }        
@@ -39,10 +37,7 @@ namespace RepoCleanup.Functions
 
         private static void WriteHeader()
         {
-            Console.Clear();
-            Console.WriteLine("\r\n----------------------------------------------------------------");
-            Console.WriteLine("------------ Create new organisation(s) with teams ----------------");
-            Console.WriteLine("----------------------------------------------------------------");
+            SharedFunctionSnippets.WriteHeader("Create new organisation(s) with teams");
         }
 
         private static Tuple<string, bool> CollectPathToOrgsFile(string defaultPathToOrgsJsonFile)
@@ -93,66 +88,11 @@ namespace RepoCleanup.Functions
             Console.WriteLine($"Created {orgsCreated} organisations out of {organisations.Count} specified.");
         }
 
-        private static Organisation CollectOrgInfo()
-        {
-            bool isValid = false;
-            string username = string.Empty;
-
-            while (!isValid)
-            {
-                Console.Write("\r\nSet username (shortname) for org: ");
-                username = Console.ReadLine().ToLower();
-
-                isValid = Regex.IsMatch(username, "^[a-z]+[a-z0-9\\-]+[a-z0-9]$");
-                if (!isValid)
-                {
-                    Console.WriteLine("Invalid name. Letters a-z and character '-' are permitted. Username must start with a letter and end with a letter or number.");
-                }
-            }
-
-            string fullname = string.Empty;
-
-            Console.Write("\r\nSet fullname for org: ");
-            fullname = Console.ReadLine();
-
-            isValid = false;
-            string website = string.Empty;
-
-            while (!isValid)
-            {
-                Console.Write("\r\nSet website for org: ");
-                website = Console.ReadLine();
-
-                if (string.IsNullOrEmpty(website))
-                {
-                    isValid = true;
-                }
-                else
-                {
-                    isValid = Regex.IsMatch(website, "^[a-zA-Z0-9\\-._/:]*$");
-                }
-                if (!isValid)
-                {
-                    Console.WriteLine("Invalid website adress. Letters a-z and characters:'-', '_', '.', '/', ':' are permitted.");
-                }
-            }
-
-            Console.WriteLine();
-
-            Organisation org = new Organisation();
-            org.Username = username;
-            org.Fullname = fullname;
-            org.Website = website;
-            org.Visibility = "public";
-            org.RepoAdminChangeTeamAccess = false;
-            return org;
-        }
-
         private static async Task<bool> CreateOrgAndTeams(Organisation org)
         {
             bool createdOrg = false;
             Console.WriteLine($"Creating org {org.Fullname} ({org.Username}). Please wait.");
-            GiteaResponse response = await GiteaService.CreateOrg(org);
+            GiteaResponse response = await new GiteaService().CreateOrg(org);
 
             if (response.Success)
             {
@@ -189,7 +129,7 @@ namespace RepoCleanup.Functions
             Console.WriteLine("Creating teams for org. Please wait.");
             foreach (CreateTeamOption team in teams)
             {
-                GiteaResponse response = await GiteaService.CreateTeam(org.Username, team);
+                GiteaResponse response = await new GiteaService().CreateTeam(org.Username, team);
 
                 if (response.Success)
                 {
