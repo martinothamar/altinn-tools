@@ -142,7 +142,7 @@ namespace RepoCleanup.Functions
 
         private static bool IsValidOrgShortName(string shortName)
         {
-            return Regex.IsMatch(shortName, "^[a-z]+[a-z0-9\\-]+[a-z0-9]$");
+            return Regex.IsMatch(shortName, "^[a-z]+[a-z0-9]$");
         }
 
         public static void ConfirmWithExit(string confirmMessage, string exitMessage)
