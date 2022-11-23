@@ -351,3 +351,5 @@ MigrationBackup/
 
 # Custom
 /AltinnReStorage/appsettings.json
+
+RepoCleanup/.idea/**
