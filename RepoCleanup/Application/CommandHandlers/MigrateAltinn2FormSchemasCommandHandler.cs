@@ -68,12 +68,14 @@ namespace RepoCleanup.Application.CommandHandlers
 
                 await WriteReport(repoFolder, schemaList);
 
-                List<string> changedFiles = Status(repoFolder);
-
-                if (changedFiles.Count > 0)
+                if (!command.DryRun)
                 {
-                    await CommitChanges(repoFolder);
-                    PushChanges(repoFolder);
+                    List<string> changedFiles = Status(repoFolder);
+                    if (changedFiles.Count > 0)
+                    {
+                        await CommitChanges(repoFolder);
+                        PushChanges(repoFolder);
+                    }
                 }
             }
         }
