@@ -19,6 +19,7 @@ public sealed class AppsFetcher
 {
     private readonly FetchConfig _config;
     private readonly GiteaClient _giteaClient;
+    private readonly KubernetesWrapperClient _kubernetesWrapperClient;
 
     private DirectoryInfo? _directory;
     private int _parallelism;
@@ -27,6 +28,7 @@ public sealed class AppsFetcher
     {
         _config = config;
         _giteaClient = new GiteaClient(config);
+        _kubernetesWrapperClient = new KubernetesWrapperClient();
     }
 
     private bool VerifyConfig()
@@ -123,6 +125,11 @@ public sealed class AppsFetcher
         await DownloadApps(apps, cancellationToken);
     }
 
+    private sealed record OrgRecord(List<GiteaRepo> Repos)
+    {
+        public int Skipped { get; set; }
+    }
+
     private async Task<GetAppsResult> GetApps(CancellationToken cancellationToken)
     {
         AnsiConsole.WriteLine();
@@ -143,10 +150,12 @@ public sealed class AppsFetcher
             {
                 result = await GetApps(ctx, cancellationToken);
             });
-        Debug.Assert(result is not null);
-        var (orgs, repos, _) = result;
+        // Debug.Assert(result is not null);
+        // ! TODO
+        var (orgs, repos, reposByOrg) = result!;
+        var skippedTotal = reposByOrg.Sum(r => r.Value.Skipped);
         AnsiConsole.MarkupLine(
-            $"Fetched organizations and apps from Altinn Studio - [green]{orgs.Count} organizations[/], [blue]{repos.Count} apps[/]"
+            $"Fetched organizations and apps from Altinn Studio - [green]{orgs.Count} organizations[/], [blue]{repos.Count} apps[/] (skipped {skippedTotal} undeployed apps)"
         );
         return result;
     }
@@ -158,7 +167,7 @@ public sealed class AppsFetcher
     {
         AnsiConsole.MarkupLine($"Fetching organizations and apps from Altinn Studio Gitea");
 
-        ConcurrentDictionary<GiteaOrg, List<GiteaRepo>> reposByOrg = new();
+        ConcurrentDictionary<GiteaOrg, OrgRecord> reposByOrg = new();
 
         var options = new ParallelOptions
         {
@@ -175,17 +184,33 @@ public sealed class AppsFetcher
                 task.IsIndeterminate = true;
                 task.StartTask();
 
-                var repos = reposByOrg.GetOrAdd(org, _ => new List<GiteaRepo>(4));
+                var deploymentstt02 = await _kubernetesWrapperClient.GetDeployments(
+                    org.Name,
+                    "tt02"
+                );
+                var deploymentsProd = await _kubernetesWrapperClient.GetDeployments(
+                    org.Name,
+                    "prod"
+                );
+                HashSet<string> deployedApps = new(deploymentstt02.Select(d => d.Repo));
+                deployedApps.UnionWith(deploymentsProd.Select(d => d.Repo));
+
+                task.MaxValue = deployedApps.Count;
+
+                var orgRecord = reposByOrg.GetOrAdd(org, _ => new(new List<GiteaRepo>(4)));
 
                 await foreach (var repo in _giteaClient.GetRepos(org.Name, cancellationToken))
                 {
-                    repos.Add(repo);
+                    if (deployedApps.Contains(repo.Name))
+                        orgRecord.Repos.Add(repo);
+                    else
+                        orgRecord.Skipped += 1;
                     var maxValue = task.MaxValue;
-                    if (repos.Count >= maxValue)
+                    if (orgRecord.Repos.Count >= maxValue)
                         task.MaxValue = maxValue + 25;
                     task.Increment(1);
                 }
-                task.MaxValue = repos.Count;
+                task.MaxValue = orgRecord.Repos.Count;
 
                 ctx.Refresh();
                 task.StopTask();
@@ -194,8 +219,11 @@ public sealed class AppsFetcher
 
         return new GetAppsResult(
             reposByOrg.Keys.ToArray(),
-            reposByOrg.SelectMany(kvp => kvp.Value).ToArray(),
-            reposByOrg.ToDictionary(kvp => kvp.Key, kvp => (IReadOnlyList<GiteaRepo>)kvp.Value)
+            reposByOrg.SelectMany(kvp => kvp.Value.Repos).ToArray(),
+            reposByOrg.ToDictionary(
+                kvp => kvp.Key,
+                kvp => ((IReadOnlyList<GiteaRepo>)kvp.Value.Repos, kvp.Value.Skipped)
+            )
         );
     }
 
@@ -311,9 +339,9 @@ public sealed class AppsFetcher
             options,
             async (org, cancellationToken) =>
             {
-                var repos = basicInformation.ReposByOrg[org];
+                var (repos, skipped) = basicInformation.ReposByOrg[org];
                 var task = ctx.AddTask(
-                    $"[green]{org.FullName} ({org.Name})[/]",
+                    $"[green]{org.FullName} ({org.Name})[/] (skipped: {skipped})",
                     autoStart: true,
                     maxValue: repos.Count
                 );
@@ -338,7 +366,7 @@ public sealed class AppsFetcher
     private sealed record GetAppsResult(
         IReadOnlyList<GiteaOrg> Orgs,
         IReadOnlyList<GiteaRepo> Repos,
-        IReadOnlyDictionary<GiteaOrg, IReadOnlyList<GiteaRepo>> ReposByOrg
+        IReadOnlyDictionary<GiteaOrg, (IReadOnlyList<GiteaRepo> Repos, int Skipped)> ReposByOrg
     );
 
     private sealed record DownloadAppsResult(IReadOnlyList<RepoInfo> Repos);
