@@ -355,3 +355,4 @@ MigrationBackup/
 RepoCleanup/.idea/**
 
 FindEventDeliveryErrors/data/**
+FindEventDeliveryErrors/.env
