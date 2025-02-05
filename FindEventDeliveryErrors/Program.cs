@@ -100,19 +100,19 @@ var tasks = subscriptions.Select(async subscription =>
     {
         var searchTimestamp = DateTimeOffset.UtcNow;
         var timeRange = searchTimestamp - searchFrom + TimeSpan.FromMinutes(5);
-        AnsiConsole.MarkupLine( $"([bold]{serviceOwner}[/]) - searching from [blue]{searchFrom.UtcDateTime:o}[/] to [blue]{searchTimestamp.UtcDateTime:o}[/] (over {timeRange} minutes)");
+        AnsiConsole.MarkupLine( $"([bold]{serviceOwner}[/]) - searching from [blue]{searchFrom.UtcDateTime:o}[/] to [blue]{searchTimestamp.UtcDateTime:o}[/] (range {timeRange})");
 
         var query = $"""
             AppDependencies
             | where TimeGenerated > todatetime('{searchFrom.UtcDateTime:o}')
             | where Success == false
-            | where Target == "platform.altinn.no"
+            | where Target startswith "platform.altinn.no"
             | where (Name startswith "POST /storage" and Name endswith "/events" and OperationName startswith "PUT Process/NextElement");
 
             AppDependencies
             | where TimeGenerated > todatetime('{searchFrom.UtcDateTime:o}')
             | where Success == false
-            | where Target == "platform.altinn.no"
+            | where Target startswith "platform.altinn.no"
             | where (Name startswith "POST /events" and OperationName startswith "PUT Process/NextElement")
             | join kind=inner AppRequests on OperationId;
         """;
@@ -175,6 +175,7 @@ var tasks = subscriptions.Select(async subscription =>
                 {
                     ServiceOwner = serviceOwner,
                     TimeGenerated = timeGenerated,
+                    TimeIngested = searchTimestamp,
                     InstanceOwnerPartyId = instanceOwnerPartyId,
                     InstanceId = instanceId,
                     Id = r.GetString(nameof(ErrorRecord.Id)),
@@ -239,7 +240,7 @@ tasks.Add(Task.Run(async () =>
 
     do 
     {
-        var alertFrom = DateTimeOffset.Parse("2025-02-05T06:36:51.2342487+00:00");
+        var alertFrom = new DateTimeOffset(2025, 2, 6, 0, 0, 0, TimeSpan.Zero);
         var errors = await db.Table<ErrorRecord>()
             .Where(e => e.AlertedInSlack == false && e.TimeGenerated >= alertFrom)
             .OrderBy(e => e.TimeGenerated)
@@ -276,7 +277,10 @@ tasks.Add(Task.Run(async () =>
             await db.UpdateAsync(error);
         }
 
-        AnsiConsole.MarkupLine($"[bold]Alerted in slack:[/] {errors.Length}");
+        if (errors.Length > 0)
+        {
+            AnsiConsole.MarkupLine($"[bold]Alerted in slack:[/] {errors.Length}");
+        }
     }
     while (await timer.WaitForNextTickAsync(cancellationToken));
 }));
@@ -291,10 +295,10 @@ tasks.Add(Task.Run(async () =>
         var fileInfo = new FileInfo(filename);
 
         var lastRecord = await db.Table<ErrorRecord>()
-            .OrderByDescending(e => e.TimeGenerated)
+            .OrderByDescending(e => e.TimeIngested)
             .FirstOrDefaultAsync();
 
-        if (!fileInfo.Exists || lastRecord.TimeGenerated > fileInfo.LastWriteTime)
+        if (!fileInfo.Exists || lastRecord.TimeIngested > fileInfo.LastWriteTimeUtc)
         {
             if (fileInfo.Exists)
                 fileInfo.Delete();
@@ -362,6 +366,9 @@ public sealed class ErrorRecord
     
 	[Indexed]
     public DateTimeOffset TimeGenerated { get; init; }
+
+    [Indexed]
+    public DateTimeOffset TimeIngested { get; init; }
 
 	[Indexed]
     public int? InstanceOwnerPartyId { get; init; }
