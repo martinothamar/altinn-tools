@@ -2,7 +2,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using System.Threading.Channels;
 using Azure;
 using Azure.Identity;
 using Azure.Monitor.Query;
@@ -44,11 +43,12 @@ foreach (var line in env)
 
 var slackAccessToken = Environment.GetEnvironmentVariable("SlackAccessToken");
 var slackSigningSecret = Environment.GetEnvironmentVariable("SlackSigningSecret");
-if (string.IsNullOrWhiteSpace(slackAccessToken) || string.IsNullOrWhiteSpace(slackSigningSecret))
-    throw new Exception("Missing SlackAccessToken or SlackSigningSecret. Check the '.env' file");
+var slackChannel = Environment.GetEnvironmentVariable("SlackChannel");
+if (string.IsNullOrWhiteSpace(slackAccessToken) || string.IsNullOrWhiteSpace(slackSigningSecret) || string.IsNullOrWhiteSpace(slackChannel))
+    throw new Exception("Missing config. Check the '.env' file");
 
 const int SearchFromDays = 90;
-TimeSpan PollInterval = TimeSpan.FromHours(1);
+TimeSpan PollInterval = TimeSpan.FromMinutes(5);
 
 var instanceIdInUrlRegex = new Regex(@"(\d+)\/([0-9a-fA-F]{8}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{12})", RegexOptions.Compiled);
 
@@ -98,9 +98,10 @@ var tasks = subscriptions.Select(async subscription =>
     var timer = new PeriodicTimer(PollInterval);
     do 
     {
-        searchFrom = lastError is not null ? 
-            lastError.TimeGenerated : 
-            DateTimeOffset.UtcNow.Subtract(TimeSpan.FromDays(SearchFromDays)).AddSeconds(-1);
+        var searchTimestamp = DateTimeOffset.UtcNow;
+        var timeRange = searchTimestamp - searchFrom + TimeSpan.FromMinutes(5);
+        AnsiConsole.MarkupLine( $"([bold]{serviceOwner}[/]) - searching from [blue]{searchFrom.UtcDateTime:o}[/] to [blue]{searchTimestamp.UtcDateTime:o}[/] (over {timeRange} minutes)");
+
         var query = $"""
             AppDependencies
             | where TimeGenerated > todatetime('{searchFrom.UtcDateTime:o}')
@@ -118,13 +119,16 @@ var tasks = subscriptions.Select(async subscription =>
         Response<LogsQueryResult> results = await client.QueryResourceAsync(
             workspace.Id,
             query,
-            new QueryTimeRange(TimeSpan.FromDays(SearchFromDays)),
+            new QueryTimeRange(timeRange),
             cancellationToken: cancellationToken
         );
 
         var tables = results.Value.AllTables;
         if (tables.Sum(t => t.Rows.Count) == 0)
+        {
+            searchFrom = searchTimestamp.AddMinutes(-1);
             continue;
+        }
 
         var total = string.Join(", ", tables.Select((t, i) => $"error {i + 1}={(t.Rows.Count > 0 ? $"[red]{t.Rows.Count}[/]" : $"[green]{t.Rows.Count}[/]")}"));
         AnsiConsole.MarkupLine( $"([bold]{serviceOwner}[/]) - {total}");
@@ -193,7 +197,10 @@ var tasks = subscriptions.Select(async subscription =>
                 };
 
                 if (timeGenerated > searchFrom)
+                {
                     lastError = record;
+                    searchFrom = timeGenerated;
+                }
 
                 records[j] = record;
             }
@@ -218,59 +225,61 @@ var tasks = subscriptions.Select(async subscription =>
             // }
         }
         
-        AnsiConsole.MarkupLine($"([bold]{serviceOwner}[/]) - wrote [blue]{tableCount}[/] to 'data/', sleeping for [blue]{PollInterval}[/]...");
+        AnsiConsole.MarkupLine($"([bold]{serviceOwner}[/]) - processed [blue]{tableCount}[/] queries, sleeping for [blue]{PollInterval}[/]...");
     }
     while (await timer.WaitForNextTickAsync(cancellationToken));
 }).ToList();
 
-// tasks.Add(Task.Run(async () => 
-// {
-//     var timer = new PeriodicTimer(TimeSpan.FromSeconds(10));
+tasks.Add(Task.Run(async () => 
+{
+    var timer = new PeriodicTimer(TimeSpan.FromSeconds(10));
 
-//     var httpClient = new HttpClient();
-//     httpClient.DefaultRequestHeaders.Authorization = new("Bearer", slackAccessToken);
-//     do 
-//     {
-//         var errors = await db.Table<ErrorRecord>()
-//             .Where(e => e.AlertedInSlack == false)
-//             .OrderBy(e => e.TimeGenerated)
-//             .ToArrayAsync();
+    var httpClient = new HttpClient();
+    httpClient.DefaultRequestHeaders.Authorization = new("Bearer", slackAccessToken);
 
-//         foreach (var error in errors)
-//         {
-//             var text = $"""
-//                 ALERT:
-//                 ```
-//                 app: {error.ServiceOwner}/{error.AppRoleName}/{error.AppVersion}
-//                 feil: {error.Name} (status {error.ResultCode}, {error.DurationMs}ms) kl: {error.TimeGenerated:O}
-//                 instanceOwnerPartyId: {error.InstanceOwnerPartyId}, instanceId: {error.InstanceId}
-//                 operation ID: {error.OperationId}
-//                 ```
-//             """.Trim();
-//             // var url = "https://slack.com/api/chat.postMessage";
-//             // using var response = await httpClient.PostAsJsonAsync(url, new 
-//             // {
-//             //     channel = ,
-//             //     text = text,
-//             // });
-//             // if (!response.IsSuccessStatusCode)
-//             // {
-//             //     var body = await response.Content.ReadAsStringAsync();
-//             //     throw new Exception($"Failed to send message to slack: {response.StatusCode}: {body}");
-//             // }
+    do 
+    {
+        var alertFrom = DateTimeOffset.Parse("2025-02-05T06:36:51.2342487+00:00");
+        var errors = await db.Table<ErrorRecord>()
+            .Where(e => e.AlertedInSlack == false && e.TimeGenerated >= alertFrom)
+            .OrderBy(e => e.TimeGenerated)
+            .ToArrayAsync();
 
-//             await using (var writer = File.AppendText("data/export/slack.txt"))
-//             {
-//                 await writer.WriteLineAsync($"{text}\n");
-//             }
+        foreach (var error in errors)
+        {
+            var text = $"""
+            *ALERT* `{error.TimeGenerated.UtcDateTime:O}`:
+            - App: *{error.ServiceOwner}*/*{error.AppRoleName}*/*{error.AppVersion}*
+            - Feil: *{error.Name}* (status *{error.ResultCode}*, *{error.DurationMs}ms*)
+            - Instansen: *{error.InstanceOwnerPartyId}*/*{error.InstanceId}*
+            - Operation ID: *{error.OperationId}*
+            """;
+            var url = "https://slack.com/api/chat.postMessage";
+            using var response = await httpClient.PostAsJsonAsync(url, new 
+            {
+                channel = slackChannel,
+                text = text,
+                mrkdwn = true,
+            });
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                throw new Exception($"Failed to send message to slack: {response.StatusCode}: {body}");
+            }
 
-//             error.AlertedInSlack = true;
-//             await db.UpdateAsync(error);
-//         }
+            await using (var writer = File.AppendText("data/export/slack.txt"))
+            {
+                await writer.WriteLineAsync($"{text}\n");
+            }
 
-//     }
-//     while (await timer.WaitForNextTickAsync());
-// }));
+            error.AlertedInSlack = true;
+            await db.UpdateAsync(error);
+        }
+
+        AnsiConsole.MarkupLine($"[bold]Alerted in slack:[/] {errors.Length}");
+    }
+    while (await timer.WaitForNextTickAsync(cancellationToken));
+}));
 
 
 tasks.Add(Task.Run(async () => 
@@ -323,9 +332,11 @@ tasks.Add(Task.Run(async () =>
                 ErrorNumber = r.ErrorNumber,
             }).ToArray();
             await csv.WriteRecordsAsync(records);
+
+            AnsiConsole.MarkupLine($"[bold]Synced CSV:[/] {records.Length} records to [blue]{filename}[/]");
         }
     }
-    while (await timer.WaitForNextTickAsync());
+    while (await timer.WaitForNextTickAsync(cancellationToken));
 }));
 
 tasks.Add(Task.Run(async () => 
@@ -335,7 +346,7 @@ tasks.Add(Task.Run(async () =>
     {
         AnsiConsole.MarkupLine($"[bold]Total errors:[/] {totalErrors}, [bold]DB saved:[/] {dbSavedErrors}");
     }
-    while (await timer.WaitForNextTickAsync());
+    while (await timer.WaitForNextTickAsync(cancellationToken));
 }));
 
 await Task.WhenAll(tasks);
