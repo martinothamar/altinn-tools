@@ -353,3 +353,6 @@ MigrationBackup/
 /AltinnReStorage/appsettings.json
 
 RepoCleanup/.idea/**
+
+FindEventDeliveryErrors/data/**
+FindEventDeliveryErrors/.env
