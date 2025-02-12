@@ -1,11 +1,6 @@
-using System.Diagnostics;
-using System.Runtime.CompilerServices;
-using Altinn.Apps.Monitoring.Application.Azure;
 using Altinn.Apps.Monitoring.Application.Db;
 using Altinn.Apps.Monitoring.Domain;
 using Microsoft.Extensions.Options;
-using NodaTime;
-using NodaTime.Extensions;
 
 namespace Altinn.Apps.Monitoring.Application;
 
@@ -77,10 +72,6 @@ internal sealed class Orchestrator(
                             | join kind=inner AppRequests on OperationId;
                         """;
 
-                    Debug.Assert(
-                        _serviceOwnerLogs is AzureServiceOwnerLogsAdapter,
-                        "The parsing below expects the Azure field names"
-                    );
                     var tables = await _serviceOwnerLogs.Query(
                         serviceOwner,
                         queries,

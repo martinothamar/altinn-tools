@@ -5,8 +5,6 @@ using Altinn.Apps.Monitoring.Domain;
 using Azure;
 using Azure.Monitor.Query;
 using Azure.Monitor.Query.Models;
-using NodaTime;
-using NodaTime.Extensions;
 
 namespace Altinn.Apps.Monitoring.Application.Azure;
 
