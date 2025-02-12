@@ -1,0 +1,9 @@
+﻿{
+  $type: trace,
+  instance_owner_party_id: 2,
+  instance_id: Guid_1,
+  trace_id: trace-id,
+  span_id: span-id,
+  parent_span_id: parent-span-id,
+  altinn_error_id: 1
+}

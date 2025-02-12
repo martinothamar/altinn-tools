@@ -1,42 +1,40 @@
-
+using Altinn.Apps.Monitoring.Application;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.HttpOverrides;
+
+DotEnv.Load();
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
 
-builder.Services.Configure<ForwardedHeadersOptions>(options =>
+if (!builder.Environment.IsDevelopment())
 {
-    options.ForwardedHeaders = ForwardedHeaders.All;
-    options.KnownNetworks.Clear(); // Loopback by default, we don't have a stable known network
-    options.KnownProxies.Clear();
-});
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders = ForwardedHeaders.All;
+        options.KnownNetworks.Clear(); // Loopback by default, we don't have a stable known network
+        options.KnownProxies.Clear();
+    });
+}
+
+builder.AddApplication();
 
 var app = builder.Build();
 
-app.UseForwardedHeaders();
+if (!builder.Environment.IsDevelopment())
+    app.UseForwardedHeaders();
 
-app.MapOpenApi();   
+app.MapOpenApi();
 
-app.MapGet("/health", Results<Ok<string>, InternalServerError> () =>
-{
-    // Check dependencies?
-    return TypedResults.Ok("Healthy");
-})
-.WithName("Health");
+app.MapGet(
+        "/health",
+        Results<Utf8ContentHttpResult, InternalServerError> () =>
+        {
+            // Check dependencies?
+            return TypedResults.Text("Healthy"u8, contentType: "text/plain", statusCode: 200);
+        }
+    )
+    .WithName("Health");
 
 app.Run();
-
-sealed class Monitor : IHostedService
-{
-    public Task StartAsync(CancellationToken cancellationToken)
-    {
-        return Task.CompletedTask;
-    }
-
-    public Task StopAsync(CancellationToken cancellationToken)
-    {
-        return Task.CompletedTask;
-    }
-}

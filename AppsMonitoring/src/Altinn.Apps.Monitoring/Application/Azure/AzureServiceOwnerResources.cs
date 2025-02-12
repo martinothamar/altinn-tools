@@ -18,34 +18,46 @@ internal sealed class AzureServiceOwnerResources(AzureClients clients, HybridCac
         LocalCacheExpiration = TimeSpan.FromMinutes(10),
     };
 
-    public ValueTask<AzureServiceOwnerResourcesRecord?> GetResources(ServiceOwner serviceOwner, CancellationToken cancellationToken)
+    public ValueTask<AzureServiceOwnerResourcesRecord?> GetResources(
+        ServiceOwner serviceOwner,
+        CancellationToken cancellationToken
+    )
     {
         return _cache.GetOrCreateAsync(
             $"{nameof(AzureServiceOwnerResources)}-{serviceOwner.Value}",
             (this, serviceOwner),
-            static async ValueTask<AzureServiceOwnerResourcesRecord?> (state, cancellationToken) => 
+            static async ValueTask<AzureServiceOwnerResourcesRecord?> (state, cancellationToken) =>
             {
                 var (self, serviceOwner) = state;
 
                 var env = "prod"; // TODO: from env?
-                var subscription = await self._armClient.GetSubscriptions().GetAsync(
-                    $"Altinn-{serviceOwner.Value.ToUpperInvariant()}-{$"{char.ToUpperInvariant(env[0])}{env[1..]}"}", 
-                    cancellationToken: cancellationToken
-                );
+                var subscription = await self
+                    ._armClient.GetSubscriptions()
+                    .GetAsync(
+                        $"Altinn-{serviceOwner.Value.ToUpperInvariant()}-{$"{char.ToUpperInvariant(env[0])}{env[1..]}"}",
+                        cancellationToken: cancellationToken
+                    );
                 if (subscription is null)
                     return null;
 
-                var rgs = await subscription.Value.GetResourceGroups().GetAllAsync(cancellationToken: cancellationToken).ToArrayAsync();
+                var rgs = await subscription
+                    .Value.GetResourceGroups()
+                    .GetAllAsync(cancellationToken: cancellationToken)
+                    .ToArrayAsync(cancellationToken);
                 var rg = rgs.SingleOrDefault(rg => rg.Data.Name == $"monitor-{serviceOwner.Value}-{env}-rg");
                 if (rg is null)
                     return null;
 
-                var workspaces = await rg.GetOperationalInsightsWorkspaces().GetAllAsync(cancellationToken: cancellationToken).ToArrayAsync();
-                var workspace = workspaces.SingleOrDefault(ws => ws.Data.Name == $"application-{serviceOwner.Value}-{env}-law");
+                var workspaces = await rg.GetOperationalInsightsWorkspaces()
+                    .GetAllAsync(cancellationToken: cancellationToken)
+                    .ToArrayAsync(cancellationToken);
+                var workspace = workspaces.SingleOrDefault(ws =>
+                    ws.Data.Name == $"application-{serviceOwner.Value}-{env}-law"
+                );
                 if (workspace is null)
                     return null;
 
-                return new (subscription.Value, rg, workspace);
+                return new(subscription.Value, rg, workspace);
             },
             options: _cacheEntryOptions,
             cancellationToken: cancellationToken
@@ -55,7 +67,7 @@ internal sealed class AzureServiceOwnerResources(AzureClients clients, HybridCac
 
 [ImmutableObject(true)]
 internal sealed record AzureServiceOwnerResourcesRecord(
-    SubscriptionResource Subscription, 
-    ResourceGroupResource ResourceGroup, 
+    SubscriptionResource Subscription,
+    ResourceGroupResource ResourceGroup,
     OperationalInsightsWorkspaceResource Workspace
 );

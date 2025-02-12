@@ -13,10 +13,8 @@ internal sealed record AzureClients
 
     public AzureClients(IHostEnvironment env)
     {
-        TokenCredential credential = env.IsDevelopment() ? 
-            new AzureCliCredential() : 
-            new ManagedIdentityCredential();
-        
+        TokenCredential credential = env.IsDevelopment() ? new AzureCliCredential() : new ManagedIdentityCredential();
+
         ArmClient = new(credential);
         LogsQueryClient = new(credential);
     }

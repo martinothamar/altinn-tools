@@ -1,0 +1,18 @@
+﻿[
+  {
+    Id: 1,
+    ServiceOwner: service-owner,
+    AppName: app-name,
+    AppVersion: 8.0.0,
+    TimeGenerated: DateTimeOffset_1,
+    TimeIngested: DateTimeOffset_2,
+    Data: {
+      InstanceOwnerPartyId: 2,
+      InstanceId: Guid_1,
+      TraceId: trace-id,
+      SpanId: span-id,
+      ParentSpanId: parent-span-id,
+      AltinnErrorId: 1
+    }
+  }
+]

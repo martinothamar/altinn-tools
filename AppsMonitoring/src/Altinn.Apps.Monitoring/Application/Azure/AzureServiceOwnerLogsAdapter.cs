@@ -5,12 +5,21 @@ using Azure.Monitor.Query.Models;
 
 namespace Altinn.Apps.Monitoring.Application.Azure;
 
-internal sealed class AzureServiceOwnerLogsAdapter(AzureClients clients, AzureServiceOwnerResources serviceOwnerResources) : IServiceOwnerLogsAdapter
+internal sealed class AzureServiceOwnerLogsAdapter(
+    AzureClients clients,
+    AzureServiceOwnerResources serviceOwnerResources
+) : IServiceOwnerLogsAdapter
 {
     private readonly LogsQueryClient _logsClient = clients.LogsQueryClient;
     private readonly AzureServiceOwnerResources _serviceOwnerResources = serviceOwnerResources;
 
-    public async ValueTask<IReadOnlyList<Table>> Query(ServiceOwner serviceOwner, string query, DateTimeOffset from, DateTimeOffset? to = null, CancellationToken cancellationToken = default)
+    public async ValueTask<IReadOnlyList<Table>> Query(
+        ServiceOwner serviceOwner,
+        string query,
+        DateTimeOffset from,
+        DateTimeOffset? to = null,
+        CancellationToken cancellationToken = default
+    )
     {
         var resources = await _serviceOwnerResources.GetResources(serviceOwner, cancellationToken);
         if (resources is null)

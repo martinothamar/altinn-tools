@@ -23,7 +23,7 @@ public readonly struct ServiceOwner : IEquatable<ServiceOwner>
             if (!char.IsLetter(serviceOwner[i]) || !char.IsLower(serviceOwner[i]))
             {
                 throw new ArgumentException(
-                    $"Service owner must only contain lowercase letters. Got: '{serviceOwner}'" , 
+                    $"Service owner must only contain lowercase letters. Got: '{serviceOwner}'",
                     nameof(serviceOwner)
                 );
             }
@@ -41,5 +41,6 @@ public readonly struct ServiceOwner : IEquatable<ServiceOwner>
     public override string ToString() => _value;
 
     public static bool operator ==(ServiceOwner left, ServiceOwner right) => left.Equals(right);
+
     public static bool operator !=(ServiceOwner left, ServiceOwner right) => !left.Equals(right);
 }

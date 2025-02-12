@@ -7,14 +7,23 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="$(AssemblyName).Tests" />
+
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.1" />
+    <PackageReference Include="System.Linq.Async" Version="6.0.1" />
     <PackageReference Include="Microsoft.Extensions.Caching.Hybrid" Version="9.1.0-preview.1.25064.3" />
+    <PackageReference Include="CsvHelper" Version="33.0.1" />
+    <PackageReference Include="NodaTime" Version="3.2.1" />
+
     <PackageReference Include="Azure.Identity" Version="1.13.2" />
     <PackageReference Include="Azure.Monitor.Query" Version="1.6.0" />
     <PackageReference Include="Azure.ResourceManager.OperationalInsights" Version="1.2.2" />
-    <PackageReference Include="CsvHelper" Version="33.0.1" />
+
+    <PackageReference Include="dbup-postgresql" Version="6.0.0-beta.44" />
+    <PackageReference Include="Npgsql" Version="9.0.2" />
+    <PackageReference Include="Npgsql.NodaTime" Version="9.0.2" />
+    <PackageReference Include="Npgsql.DependencyInjection" Version="9.0.2" />
     <PackageReference Include="sqlite-net-pcl" Version="1.9.172" />
-    <PackageReference Include="System.Linq.Async" Version="6.0.1" />
   </ItemGroup>
 
 </Project>

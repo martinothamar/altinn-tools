@@ -1,0 +1,7 @@
+﻿{
+  $type: logs,
+  trace_id: trace-id,
+  span_id: span-id,
+  message: some message,
+  altinn_error_id: 1
+}
