@@ -1,4 +1,7 @@
 using Altinn.Apps.Monitoring.Application;
+using DotNet.Testcontainers.Builders;
+using DotNet.Testcontainers.Configurations;
+using DotNet.Testcontainers.Containers;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Testcontainers.PostgreSql;
 
@@ -79,8 +82,15 @@ internal sealed class HostFixture : WebApplicationFactory<Program>
                 .WithAutoRemove(false)
                 .WithCleanUp(false)
                 .WithResourceMapping(initFile, "/docker-entrypoint-initdb.d/")
+                .WithDatabase("monitoringdb")
+                // We reset the environment as we don't want postgresql to actually create
+                // the database for us, as we are providing our own init script.
+                .WithEnvironment("POSTGRES_DB", PostgreSqlBuilder.DefaultDatabase)
+                .WithWaitStrategy(
+                    Wait.ForUnixContainer()
+                        .AddCustomWaitStrategy(new WaitUntil("monitoringdb", "platform_monitoring_admin"))
+                )
                 .Build();
-
             await postgreSqlContainer.StartAsync(cancellationToken);
 
             fixture = new HostFixture(postgreSqlContainer);
@@ -98,6 +108,40 @@ internal sealed class HostFixture : WebApplicationFactory<Program>
                 await postgreSqlContainer.DisposeAsync();
 
             throw;
+        }
+    }
+
+    private sealed class WaitUntil : IWaitUntil
+    {
+        private readonly IList<string> _command;
+
+        public WaitUntil(string database, string username)
+        {
+            // Explicitly specify the host to ensure readiness only after the initdb scripts have executed, and the server is listening on TCP/IP.
+            _command = new List<string>
+            {
+                "pg_isready",
+                "--host",
+                "localhost",
+                "--dbname",
+                database,
+                "--username",
+                username,
+            };
+        }
+
+        public async Task<bool> UntilAsync(IContainer container)
+        {
+            var execResult = await container.ExecAsync(_command).ConfigureAwait(false);
+
+            if (execResult.Stderr.Contains("pg_isready was not found"))
+            {
+                throw new NotSupportedException(
+                    $"The '{container.Image.FullName}' image does not contain: pg_isready. Please use 'postgres:9.3' onwards."
+                );
+            }
+
+            return 0L.Equals(execResult.ExitCode);
         }
     }
 }

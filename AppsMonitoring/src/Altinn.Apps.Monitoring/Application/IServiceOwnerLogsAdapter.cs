@@ -1,16 +1,16 @@
+using Altinn.Apps.Monitoring.Application.Db;
 using Altinn.Apps.Monitoring.Domain;
+using NodaTime;
 
 namespace Altinn.Apps.Monitoring.Application;
 
 public interface IServiceOwnerLogsAdapter
 {
-    ValueTask<IReadOnlyList<Table>> Query(
+    ValueTask<IReadOnlyList<IReadOnlyList<ErrorEntity>>> Query(
         ServiceOwner serviceOwner,
         string query,
-        DateTimeOffset from,
-        DateTimeOffset? to = null,
+        Instant from,
+        Instant? to = null,
         CancellationToken cancellationToken = default
     );
 }
-
-public sealed record Table(IReadOnlyList<string> Columns, IReadOnlyList<IReadOnlyList<object>> Rows);

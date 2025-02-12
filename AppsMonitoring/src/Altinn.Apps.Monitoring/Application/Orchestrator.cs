@@ -1,9 +1,11 @@
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
+using Altinn.Apps.Monitoring.Application.Azure;
 using Altinn.Apps.Monitoring.Application.Db;
 using Altinn.Apps.Monitoring.Domain;
 using Microsoft.Extensions.Options;
 using NodaTime;
-using Npgsql;
-using NpgsqlTypes;
+using NodaTime.Extensions;
 
 namespace Altinn.Apps.Monitoring.Application;
 
@@ -13,7 +15,8 @@ internal sealed class Orchestrator(
     IServiceOwnerDiscovery serviceOwnerDiscovery,
     IServiceOwnerLogsAdapter serviceOwnerLogs,
     IHostApplicationLifetime applicationLifetime,
-    NpgsqlDataSource dataSource
+    Repository repository,
+    TimeProvider timeProvider
 ) : IHostedService
 {
     private readonly ILogger<Orchestrator> _logger = logger;
@@ -21,7 +24,8 @@ internal sealed class Orchestrator(
     private readonly IServiceOwnerDiscovery _serviceOwnerDiscovery = serviceOwnerDiscovery;
     private readonly IServiceOwnerLogsAdapter _serviceOwnerLogs = serviceOwnerLogs;
     private readonly IHostApplicationLifetime _applicationLifetime = applicationLifetime;
-    private readonly NpgsqlDataSource _dataSource = dataSource;
+    private readonly Repository _repository = repository;
+    private readonly TimeProvider _timeProvider = timeProvider;
 
     private Task[] _serviceOwnerThreads;
 
@@ -37,34 +41,70 @@ internal sealed class Orchestrator(
     private async Task ServiceOwnerThread(ServiceOwner serviceOwner, CancellationToken cancellationToken)
     {
         var options = _appConfiguration.CurrentValue;
-        var timer = new PeriodicTimer(options.PollInterval);
+        var timer = new PeriodicTimer(options.PollInterval, _timeProvider);
+
         try
         {
+            var latestErrorTime = await _repository.GetLatestErrorGeneratedTime(serviceOwner, cancellationToken);
+            var searchFrom =
+                latestErrorTime
+                ?? _timeProvider
+                    .GetCurrentInstant()
+                    .Minus(Duration.FromDays(options.SearchFromDays))
+                    .Minus(Duration.FromSeconds(1));
+
+            _logger.LogInformation("[{ServiceOwner}] starting search from {SearchFrom}", serviceOwner, searchFrom);
+
             do
             {
                 try
                 {
-                    List<ErrorEntity> errors = [];
+                    var searchTimestamp = _timeProvider.GetCurrentInstant();
+                    var timeRange = searchTimestamp - searchFrom + Duration.FromMinutes(5);
 
-                    await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+                    var queries = $"""
+                            AppDependencies
+                            | where TimeGenerated > todatetime('{searchFrom}')
+                            | where Success == false
+                            | where Target startswith "platform.altinn.no"
+                            | where (Name startswith "POST /storage" and Name endswith "/events" and OperationName startswith "PUT Process/NextElement");
 
-                    await using var import = await connection.BeginBinaryImportAsync(
-                        "COPY monitoring.errors (service_owner, app_name, app_version, time_generated, time_ingested, data) FROM STDIN (FORMAT binary)",
-                        cancellationToken
+                            AppDependencies
+                            | where TimeGenerated > todatetime('{searchFrom}')
+                            | where Success == false
+                            | where Target startswith "platform.altinn.no"
+                            | where (Name startswith "POST /events" and OperationName startswith "PUT Process/NextElement")
+                            | join kind=inner AppRequests on OperationId;
+                        """;
+
+                    Debug.Assert(
+                        _serviceOwnerLogs is AzureServiceOwnerLogsAdapter,
+                        "The parsing below expects the Azure field names"
+                    );
+                    var tables = await _serviceOwnerLogs.Query(
+                        serviceOwner,
+                        queries,
+                        searchFrom,
+                        cancellationToken: cancellationToken
                     );
 
-                    foreach (var error in errors)
+                    var totalRows = tables.Sum(t => t.Count);
+                    if (totalRows == 0)
                     {
-                        await import.StartRowAsync(cancellationToken);
-                        await import.WriteAsync(error.ServiceOwner, NpgsqlDbType.Text, cancellationToken);
-                        await import.WriteAsync(error.AppName, NpgsqlDbType.Text, cancellationToken);
-                        await import.WriteAsync(error.AppVersion, NpgsqlDbType.Text, cancellationToken);
-                        await import.WriteAsync(error.TimeGenerated, NpgsqlDbType.TimestampTz, cancellationToken);
-                        await import.WriteAsync(error.TimeIngested, NpgsqlDbType.TimestampTz, cancellationToken);
-                        await import.WriteAsync(error.Data, NpgsqlDbType.Jsonb, cancellationToken);
+                        searchFrom = searchTimestamp.Minus(Duration.FromMinutes(1));
+                        continue;
                     }
 
-                    await import.CompleteAsync(cancellationToken);
+                    _logger.LogInformation(
+                        "[{ServiceOwner}] found {TotalRows} rows in {TableCount} tables",
+                        serviceOwner,
+                        totalRows,
+                        tables.Count
+                    );
+
+                    var errors = tables.SelectMany(t => t).ToArray();
+
+                    await _repository.InsertErrors(errors, cancellationToken);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {

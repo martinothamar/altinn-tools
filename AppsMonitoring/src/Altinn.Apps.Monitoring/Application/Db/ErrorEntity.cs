@@ -4,17 +4,7 @@ using NodaTime;
 
 namespace Altinn.Apps.Monitoring.Application.Db;
 
-internal static class Config
-{
-    internal static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-        AllowOutOfOrderMetadataProperties = true,
-        Converters = { new JsonStringEnumConverter() },
-    };
-}
-
-internal sealed class ErrorEntity
+public sealed class ErrorEntity
 {
     public required long Id { get; init; }
     public required string ServiceOwner { get; init; }
@@ -27,7 +17,7 @@ internal sealed class ErrorEntity
 
 [JsonDerivedType(typeof(ErrorTraceData), typeDiscriminator: "trace")]
 [JsonDerivedType(typeof(ErrorLogsData), typeDiscriminator: "logs")]
-internal abstract class ErrorData
+public abstract class ErrorData
 {
     public required int AltinnErrorId { get; init; }
 
@@ -52,16 +42,22 @@ internal abstract class ErrorData
     }
 }
 
-internal sealed class ErrorTraceData : ErrorData
+public sealed class ErrorTraceData : ErrorData
 {
     public required int? InstanceOwnerPartyId { get; init; }
     public required Guid? InstanceId { get; init; }
     public required string TraceId { get; init; }
     public required string SpanId { get; init; }
     public required string? ParentSpanId { get; init; }
+    public required string TraceName { get; init; }
+    public required string SpanName { get; init; }
+    public required bool Success { get; init; }
+    public required string? Result { get; init; }
+    public required Duration Duration { get; init; }
+    public required Dictionary<string, string>? Attributes { get; init; }
 }
 
-internal sealed class ErrorLogsData : ErrorData
+public sealed class ErrorLogsData : ErrorData
 {
     public required string? TraceId { get; init; }
     public required string? SpanId { get; init; }

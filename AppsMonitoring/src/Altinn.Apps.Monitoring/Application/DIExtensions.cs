@@ -1,4 +1,5 @@
 using Altinn.Apps.Monitoring.Application.Azure;
+using Altinn.Apps.Monitoring.Application.Db;
 using Altinn.Apps.Monitoring.Application.DbUp;
 using Npgsql;
 
@@ -8,6 +9,8 @@ internal static class DIExtensions
 {
     public static IHostApplicationBuilder AddApplication(this IHostApplicationBuilder builder)
     {
+        builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
+
         builder.Services.Configure<AppConfiguration>(builder.Configuration.GetSection(nameof(AppConfiguration)));
         builder.Services.AddHostedService<Seeder>();
 
@@ -31,6 +34,7 @@ internal static class DIExtensions
         builder.Services.AddSingleton<AzureServiceOwnerResources>();
         builder.Services.AddSingleton<IServiceOwnerDiscovery, AzureServiceOwnerDiscovery>();
         builder.Services.AddSingleton<IServiceOwnerLogsAdapter, AzureServiceOwnerLogsAdapter>();
+        builder.Services.AddSingleton<Repository>();
 
         builder.Services.AddHostedService<Orchestrator>();
         return builder;

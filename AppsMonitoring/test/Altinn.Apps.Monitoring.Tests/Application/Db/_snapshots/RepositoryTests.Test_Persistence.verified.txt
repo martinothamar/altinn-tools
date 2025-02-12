@@ -1,0 +1,55 @@
+﻿{
+  Pre: [
+    {
+      ServiceOwner: service-owner,
+      AppName: app-name,
+      AppVersion: 8.0.0,
+      TimeGenerated: DateTimeOffset_1,
+      TimeIngested: DateTimeOffset_2,
+      Data: {
+        InstanceOwnerPartyId: 2,
+        InstanceId: Guid_1,
+        TraceId: trace-id,
+        SpanId: span-id,
+        ParentSpanId: parent-span-id,
+        TraceName: trace-name,
+        SpanName: span-name,
+        Success: false,
+        Result: result,
+        Duration: 0:00:00:00.1,
+        Attributes: {
+          key1: value1,
+          key2: value2
+        },
+        AltinnErrorId: 1
+      }
+    }
+  ],
+  Post: [
+    {
+      Id: 1,
+      ServiceOwner: service-owner,
+      AppName: app-name,
+      AppVersion: 8.0.0,
+      TimeGenerated: DateTimeOffset_3,
+      TimeIngested: DateTimeOffset_4,
+      Data: {
+        InstanceOwnerPartyId: 2,
+        InstanceId: Guid_1,
+        TraceId: trace-id,
+        SpanId: span-id,
+        ParentSpanId: parent-span-id,
+        TraceName: trace-name,
+        SpanName: span-name,
+        Success: false,
+        Result: result,
+        Duration: 0:00:00:00.1,
+        Attributes: {
+          key1: value1,
+          key2: value2
+        },
+        AltinnErrorId: 1
+      }
+    }
+  ]
+}
