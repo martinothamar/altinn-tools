@@ -32,7 +32,7 @@
       AppName: app-name,
       AppVersion: 8.0.0,
       TimeGenerated: DateTimeOffset_3,
-      TimeIngested: DateTimeOffset_4,
+      TimeIngested: DateTimeOffset_2,
       Data: {
         InstanceOwnerPartyId: 2,
         InstanceId: Guid_1,

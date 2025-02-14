@@ -79,8 +79,6 @@ internal sealed class HostFixture : WebApplicationFactory<Program>
                 .WithImage("postgres:16")
                 .WithUsername("platform_monitoring_admin")
                 .WithPassword("Password")
-                .WithAutoRemove(false)
-                .WithCleanUp(false)
                 .WithResourceMapping(initFile, "/docker-entrypoint-initdb.d/")
                 .WithDatabase("monitoringdb")
                 // We reset the environment as we don't want postgresql to actually create
