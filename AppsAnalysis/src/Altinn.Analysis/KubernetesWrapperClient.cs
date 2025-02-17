@@ -4,8 +4,6 @@ using System.Text.Json.Serialization;
 
 namespace Altinn.Analysis;
 
-// {"version":"1.2.15","release":"krt-krt-1001a-1"
-
 public sealed record Deployment(string Version, string Repo);
 
 public sealed class KubernetesWrapperClient

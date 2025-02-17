@@ -1,7 +1,7 @@
 using Spectre.Console;
 using Spectre.Console.Rendering;
 
-namespace Altinn.Analysis;
+namespace Altinn.Analysis.Cli;
 
 internal sealed class ValueProgressColumn : ProgressColumn
 {

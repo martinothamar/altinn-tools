@@ -1,5 +1,5 @@
 ﻿using System.Globalization;
-using Altinn.Analysis;
+using Altinn.Analysis.Cli;
 using ConsoleAppFramework;
 
 var app = ConsoleApp.Create();

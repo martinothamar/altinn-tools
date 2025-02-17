@@ -4,18 +4,9 @@ using System.Globalization;
 using System.Threading.Channels;
 using Spectre.Console;
 
-namespace Altinn.Analysis;
+namespace Altinn.Analysis.Cli;
 
-public sealed record FetchConfig(
-    string Directory,
-    string Username,
-    string Password,
-    int MaxParallelism,
-    bool ClearDirectory,
-    string AltinnUrl
-);
-
-public sealed class AppsFetcher
+internal sealed class AppsFetcher
 {
     private readonly FetchConfig _config;
     private readonly GiteaClient _giteaClient;
