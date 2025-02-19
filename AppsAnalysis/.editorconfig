@@ -26,3 +26,6 @@ dotnet_diagnostic.CA1050.severity = suggestion
 
 # S3903: Types should be defined in named namespaces
 dotnet_diagnostic.S3903.severity = suggestion
+
+# S1199: Nested code blocks should not be used
+dotnet_diagnostic.S1199.severity = suggestion

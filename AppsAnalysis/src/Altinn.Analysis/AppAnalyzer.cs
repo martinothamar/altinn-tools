@@ -1,5 +1,8 @@
 using System.Collections.Specialized;
 using Buildalyzer;
+using Buildalyzer.Workspaces;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.FindSymbols;
 
 namespace Altinn.Analysis;
 
@@ -8,7 +11,11 @@ public sealed record AppRepository(DirectoryInfo Dir, string Org, string Name);
 // TODO: Consider SoA if this approach works OK
 public readonly record struct AppAnalysisResult
 {
-    private static readonly BitVector32.Section _validProject = BitVector32.CreateSection(2);
+    private static readonly BitVector32.Section _timedOut = BitVector32.CreateSection(2);
+    private static readonly BitVector32.Section _validProject = BitVector32.CreateSection(
+        2,
+        _timedOut
+    );
     private static readonly BitVector32.Section _builds = BitVector32.CreateSection(
         2,
         _validProject
@@ -23,22 +30,40 @@ public readonly record struct AppAnalysisResult
 
     public AppAnalysisResult(
         AppRepository repo,
+        bool? timedOut = null,
         bool? validProject = null,
         bool? builds = null,
         bool? hasAppLib = null,
-        bool? HasLatestAppLib = null
+        bool? HasLatestAppLib = null,
+        string? appCoreVersion = null,
+        uint? warningCount = null,
+        Dictionary<string, List<ReferencedSymbol>>? symbolReferenceCounts = null
     )
     {
         AppRepository = repo;
         _bits = new BitVector32(0);
+        _bits[_timedOut] = ToValue(timedOut);
         _bits[_validProject] = ToValue(validProject);
         _bits[_builds] = ToValue(builds);
         _bits[_hasAppLib] = ToValue(hasAppLib);
         _bits[_hasLatestAppLib] = ToValue(HasLatestAppLib);
+        AppCoreVersion = appCoreVersion;
+        WarningCount = warningCount;
+        SymbolReferenceCountsBySymbol = symbolReferenceCounts ?? new();
     }
 
     public AppRepository AppRepository { get; }
 
+    public readonly IReadOnlyDictionary<
+        string,
+        List<ReferencedSymbol>
+    > SymbolReferenceCountsBySymbol { get; }
+
+    public string? AppCoreVersion { get; }
+
+    public uint? WarningCount { get; }
+
+    public readonly bool? TimedOut => FromValue(_timedOut);
     public readonly bool? ValidProject => FromValue(_validProject);
     public readonly bool? Builds => FromValue(_builds);
     public readonly bool? HasAppLib => FromValue(_hasAppLib);
@@ -67,60 +92,151 @@ public readonly record struct AppAnalysisResult
 
 public static class AppAnalyzer
 {
-    public static AppAnalysisResult Run(AppRepository app, CancellationToken cancellationToken)
+    public static async Task<AppAnalysisResult> Run(
+        AppRepository app,
+        string[] findReferences,
+        CancellationToken cancellationToken
+    )
     {
         var manager = new AnalyzerManager();
         var dir = app.Dir;
         var projectFile = Path.Combine(dir.FullName, "App", "App.csproj");
 
         if (!File.Exists(projectFile))
-            return new AppAnalysisResult(app, validProject: false);
+            return new AppAnalysisResult(app, timedOut: false, validProject: false);
 
-        const string tfm = "net8.0";
         IAnalyzerResults buildResults;
+        IProjectAnalyzer project;
         try
         {
-            var project = manager.GetProject(projectFile);
+            project = manager.GetProject(projectFile);
             cancellationToken.ThrowIfCancellationRequested();
 
-            buildResults = project.Build(tfm);
+            buildResults = project.Build();
             cancellationToken.ThrowIfCancellationRequested();
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            return new AppAnalysisResult(app, validProject: false);
+            return new AppAnalysisResult(app, timedOut: false, validProject: false);
         }
 
-        if (!buildResults.TryGetTargetFramework(tfm, out var result))
-            return new AppAnalysisResult(app, validProject: false);
-
-        if (!result.Succeeded)
-            return new AppAnalysisResult(app, validProject: true, builds: false);
+        var builds = buildResults.OverallSuccess;
+        var result = buildResults.FirstOrDefault(r => r.Succeeded);
+        if (result is null)
+            return new AppAnalysisResult(app, timedOut: false, validProject: true, builds: builds);
 
         var appCoreRef = result.PackageReferences.FirstOrDefault(r =>
-            r.Key == "Altinn.App.Core" || r.Key == "Altinn.App.Core.Experimental"
+            // Main
+            r.Key == "Altinn.App.Core"
+            // PR releases
+            || r.Key == "Altinn.App.Core.Experimental"
+            // <=6.0
+            || r.Key == "Altinn.App.Common"
         );
-        if (appCoreRef.Key is null)
-            return new AppAnalysisResult(app, validProject: true, builds: true, hasAppLib: false);
-
-        if (!appCoreRef.Value.TryGetValue("Version", out var version))
-            return new AppAnalysisResult(app, validProject: true, builds: true, hasAppLib: false);
-
-        if (!version.StartsWith('8'))
+        string? version = null;
+        var hasAppLib =
+            appCoreRef.Key is not null && appCoreRef.Value.TryGetValue("Version", out version);
+        var HasLatestAppLib = version is not null && version.StartsWith('8');
+        if (!builds || !hasAppLib || !HasLatestAppLib)
             return new AppAnalysisResult(
                 app,
+                timedOut: false,
                 validProject: true,
-                builds: true,
-                hasAppLib: true,
-                HasLatestAppLib: false
+                builds: builds,
+                hasAppLib: hasAppLib,
+                HasLatestAppLib: HasLatestAppLib,
+                appCoreVersion: version
             );
+
+        AdhocWorkspace workspace;
+        Project roslynProject;
+        Compilation? compilation;
+        try 
+        {
+            workspace = project.GetWorkspace(addProjectReferences: true);
+            roslynProject = workspace.CurrentSolution.Projects.First();
+            compilation = await roslynProject.GetCompilationAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return new AppAnalysisResult(
+                app,
+                timedOut: false,
+                validProject: true,
+                builds: false,
+                hasAppLib: hasAppLib,
+                HasLatestAppLib: HasLatestAppLib,
+                appCoreVersion: version
+            );
+        }
+
+        if (compilation is null)
+            return new AppAnalysisResult(
+                app,
+                timedOut: false,
+                validProject: true,
+                builds: false,
+                hasAppLib: hasAppLib,
+                HasLatestAppLib: HasLatestAppLib,
+                appCoreVersion: version
+            );
+
+        var diagnostics = compilation.GetDiagnostics(cancellationToken);
+        var warningCount = (uint)
+            diagnostics.Count(d => d.Id != "CS1701" && d.Severity == DiagnosticSeverity.Warning);
+        builds =
+            builds
+            && !diagnostics.Any(d => d.Severity >= DiagnosticSeverity.Error && !d.IsSuppressed);
+        if (!builds)
+            return new AppAnalysisResult(
+                app,
+                timedOut: false,
+                validProject: true,
+                builds: builds,
+                hasAppLib: hasAppLib,
+                HasLatestAppLib: HasLatestAppLib,
+                appCoreVersion: version,
+                warningCount: warningCount
+            );
+
+        var referenceCounts = new Dictionary<string, List<ReferencedSymbol>>(16);
+        foreach (var symbolRef in findReferences)
+        {
+            if (!referenceCounts.TryGetValue(symbolRef, out var symbolRefs))
+                referenceCounts[symbolRef] = symbolRefs = new List<ReferencedSymbol>(16);
+
+            var symbols = DocumentationCommentId.GetSymbolsForDeclarationId(symbolRef, compilation);
+            foreach (var symbol in symbols)
+            {
+                var references = await SymbolFinder.FindReferencesAsync(
+                    symbol,
+                    roslynProject.Solution,
+                    cancellationToken
+                );
+
+                foreach (var reference in references)
+                {
+                    // Filter out references to the symbol itself
+                    // (sometimes we get both the interface method and the implementation method)
+                    if (!SymbolEqualityComparer.Default.Equals(reference.Definition, symbol))
+                        continue;
+
+                    foreach (var location in reference.Locations)
+                        symbolRefs.Add(reference);
+                }
+            }
+        }
 
         return new AppAnalysisResult(
             app,
+            timedOut: false,
             validProject: true,
-            builds: true,
-            hasAppLib: true,
-            HasLatestAppLib: true
+            builds: builds,
+            hasAppLib: hasAppLib,
+            HasLatestAppLib: HasLatestAppLib,
+            appCoreVersion: version,
+            warningCount: warningCount,
+            symbolReferenceCounts: referenceCounts
         );
     }
 }
