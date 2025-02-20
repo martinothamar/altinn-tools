@@ -155,6 +155,14 @@ internal sealed class Orchestrator(
                                 .Minus(Duration.FromSeconds(1));
                         var searchTo = _timeProvider.GetCurrentInstant().Minus(Duration.FromMinutes(10));
 
+                        _logger.LogInformation(
+                            "[{ServiceOwner}] querying '{Query}' from {SearchFrom} to {SearchTo}",
+                            serviceOwner,
+                            query.Name,
+                            searchFrom,
+                            searchTo
+                        );
+
                         var tables = await _serviceOwnerLogs.Query(
                             serviceOwner,
                             query,

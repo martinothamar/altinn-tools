@@ -13,6 +13,7 @@ public sealed record TelemetryEntity
     public required Instant TimeGenerated { get; init; }
     public required Instant TimeIngested { get; init; }
     public required long DupeCount { get; init; }
+    public required bool Seeded { get; init; }
     public required TelemetryData Data { get; init; }
 }
 
@@ -53,7 +54,7 @@ public sealed class TraceData : TelemetryData
     public required string? ParentSpanId { get; init; }
     public required string TraceName { get; init; }
     public required string SpanName { get; init; }
-    public required bool Success { get; init; }
+    public required bool? Success { get; init; }
     public required string? Result { get; init; }
     public required Duration Duration { get; init; }
     public required Dictionary<string, string?>? Attributes { get; init; }

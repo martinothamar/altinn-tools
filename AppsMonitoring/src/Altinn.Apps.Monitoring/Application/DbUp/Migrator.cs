@@ -66,6 +66,7 @@ internal sealed class Script0001Initial : IScript
                     time_generated TIMESTAMPTZ NOT NULL,
                     time_ingested TIMESTAMPTZ NOT NULL,
                     dupe_count BIGINT NOT NULL,
+                    seeded BOOLEAN NOT NULL,
                     data JSONB NOT NULL,
                     UNIQUE (service_owner, ext_id)
                 );

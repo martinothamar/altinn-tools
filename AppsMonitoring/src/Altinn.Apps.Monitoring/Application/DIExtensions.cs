@@ -11,12 +11,39 @@ internal static class DIExtensions
     public static IHostApplicationBuilder AddApplication(this IHostApplicationBuilder builder)
     {
         builder.Configuration.AddJsonFile("appsettings.Secret.json", optional: true, reloadOnChange: true);
+        builder
+            .Services.AddOptions<AppConfiguration>()
+            .BindConfiguration(nameof(AppConfiguration))
+            .Validate(config =>
+            {
+                if (config.PollInterval <= TimeSpan.Zero)
+                    return false;
+                if (config.SearchFromDays <= 0)
+                    return false;
+                if (string.IsNullOrWhiteSpace(config.AltinnEnvironment))
+                    return false;
+                if (config.AltinnEnvironment is not "at24" or "tt02" or "prod")
+                    return false;
+                if (string.IsNullOrWhiteSpace(config.DbConnectionString))
+                    return false;
+
+                return true;
+            })
+            .ValidateOnStart();
 
         builder.Services.TryAddSingleton<TimeProvider>(TimeProvider.System);
 
-        builder.Services.Configure<AppConfiguration>(builder.Configuration.GetSection(nameof(AppConfiguration)));
+        // Hosted service registration
+        // 1. Migrate db
         builder.Services.AddHostedService<Migrator>();
+        // 2. Seed db
+        builder.Services.TryAddSingleton<Seeder>();
+        builder.Services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<Seeder>());
+        // 3. Run the orchestrator (main loop)
+        builder.Services.TryAddSingleton<Orchestrator>();
+        builder.Services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<Orchestrator>());
 
+        // Database services
         var connString = builder.Configuration.GetSection(nameof(AppConfiguration))[
             nameof(AppConfiguration.DbConnectionString)
         ];
@@ -31,7 +58,9 @@ internal static class DIExtensions
                     .ConfigureJsonOptions(Db.Config.JsonOptions)
                     .UseNodaTime()
         );
+        builder.Services.TryAddSingleton<Repository>();
 
+        // Azure services/infra
         builder.Services.AddHybridCache();
         builder.Services.TryAddSingleton<AzureClients>();
         builder.Services.TryAddSingleton<AzureServiceOwnerResources>();
@@ -47,10 +76,7 @@ internal static class DIExtensions
             sp.GetRequiredService<AzureServiceOwnerMonitorAdapter>()
         );
         builder.Services.TryAddSingleton<IQueryLoader, StaticQueryLoader>();
-        builder.Services.TryAddSingleton<Repository>();
 
-        builder.Services.TryAddSingleton<Orchestrator>();
-        builder.Services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<Orchestrator>());
         return builder;
     }
 }

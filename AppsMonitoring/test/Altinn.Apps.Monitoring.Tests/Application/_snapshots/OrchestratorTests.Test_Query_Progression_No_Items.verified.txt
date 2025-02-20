@@ -84,7 +84,7 @@
       ReportedResults: [
         {
           ServiceOwner: {
-            Value: two
+            Value: one
           },
           Query: {
             Name: query,
@@ -97,7 +97,7 @@
         },
         {
           ServiceOwner: {
-            Value: one
+            Value: two
           },
           Query: {
             Name: query,

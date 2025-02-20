@@ -143,32 +143,15 @@ internal sealed partial class AzureServiceOwnerMonitorAdapter(
             var row = table.Rows[j];
 
             var name = ReadString(row, nameIdx);
+            var rootTraceRequestUrl = ReadString(row, urlIdx);
 
-            string? rootRequestUrl = null;
             int? instanceOwnerPartyId = null;
             Guid? instanceId = null;
-            if (urlIdx != -1)
+            var match = instanceIdRegex.Match(rootTraceRequestUrl);
+            if (match.Success)
             {
-                // Url column is present in requests table but not the dependency table
-                // so in this case the root trace/request has been joined in
-                rootRequestUrl = ReadString(row, urlIdx);
-                var match = instanceIdRegex.Match(rootRequestUrl);
-                if (match.Success)
-                {
-                    instanceOwnerPartyId = int.Parse(match.Groups[1].Value);
-                    instanceId = Guid.Parse(match.Groups[2].Value);
-                }
-            }
-            else
-            {
-                // When we don't have the root request joined in,
-                // lets see if we can extract the instance id from the name
-                var match = instanceIdRegex.Match(name);
-                if (match.Success)
-                {
-                    instanceOwnerPartyId = int.Parse(match.Groups[1].Value);
-                    instanceId = Guid.Parse(match.Groups[2].Value);
-                }
+                instanceOwnerPartyId = int.Parse(match.Groups[1].Value);
+                instanceId = Guid.Parse(match.Groups[2].Value);
             }
 
             var timeGenerated = ReadInstant(row, timeGeneratedIdx);
@@ -186,6 +169,7 @@ internal sealed partial class AzureServiceOwnerMonitorAdapter(
                     TimeGenerated = timeGenerated,
                     TimeIngested = Instant.MinValue,
                     DupeCount = 0,
+                    Seeded = false,
                     Data = new TraceData
                     {
                         AltinnErrorId = i,
@@ -206,7 +190,7 @@ internal sealed partial class AzureServiceOwnerMonitorAdapter(
                             ["Data"] = ReadString(row, dataIdx),
                             ["PerformanceBucket"] = ReadString(row, performanceBucketIdx),
                             ["Properties"] = ReadString(row, propertiesIdx),
-                            ["Url"] = rootRequestUrl,
+                            ["RootTraceRequestUrl"] = rootTraceRequestUrl,
                         },
                     },
                 }

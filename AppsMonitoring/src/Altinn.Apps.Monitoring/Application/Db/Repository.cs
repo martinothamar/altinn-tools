@@ -57,6 +57,18 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
         return queryStates;
     }
 
+    public async ValueTask<bool> HasAnyTelemetry(CancellationToken cancellationToken)
+    {
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM monitoring.telemetry";
+        await command.PrepareAsync(cancellationToken);
+        var countObj = await command.ExecuteScalarAsync(cancellationToken);
+        if (countObj is not long count)
+            throw new InvalidOperationException("Unexpected result from COUNT(*) query: " + countObj);
+        return count > 0;
+    }
+
     public async ValueTask<IReadOnlyList<TelemetryEntity>> ListTelemetry(
         ServiceOwner? serviceOwner = null,
         CancellationToken cancellationToken = default
@@ -87,7 +99,8 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
                 TimeGenerated = reader.GetFieldValue<Instant>(5),
                 TimeIngested = reader.GetFieldValue<Instant>(6),
                 DupeCount = reader.GetInt64(7),
-                Data = reader.GetFieldValue<TelemetryData>(8),
+                Seeded = reader.GetBoolean(8),
+                Data = reader.GetFieldValue<TelemetryData>(9),
             };
 
             telemetry.Add(item);
@@ -127,6 +140,7 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
                             app_version TEXT NOT NULL,
                             time_generated TIMESTAMPTZ NOT NULL,
                             time_ingested TIMESTAMPTZ NOT NULL,
+                            seeded BOOLEAN NOT NULL,
                             data JSONB NOT NULL
                         ) ON COMMIT DROP;
                     """;
@@ -137,7 +151,7 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
             // 2. Copy data into temp table
             {
                 await using var import = connection.BeginBinaryImport(
-                    "COPY telemetry_import (ext_id, service_owner, app_name, app_version, time_generated, time_ingested, data) FROM STDIN (FORMAT binary)"
+                    "COPY telemetry_import (ext_id, service_owner, app_name, app_version, time_generated, time_ingested, seeded, data) FROM STDIN (FORMAT binary)"
                 );
                 for (int i = 0; i < telemetry.Count; i++)
                 {
@@ -154,6 +168,7 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
                     await import.WriteAsync(item.AppVersion, NpgsqlDbType.Text, cancellationToken);
                     await import.WriteAsync(item.TimeGenerated, NpgsqlDbType.TimestampTz, cancellationToken);
                     await import.WriteAsync(item.TimeIngested, NpgsqlDbType.TimestampTz, cancellationToken);
+                    await import.WriteAsync(item.Seeded, NpgsqlDbType.Boolean, cancellationToken);
                     await import.WriteAsync(item.Data, NpgsqlDbType.Jsonb, cancellationToken);
                 }
 
@@ -164,8 +179,8 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
             {
                 await using var command = connection.CreateCommand();
                 command.CommandText = """
-                        INSERT INTO monitoring.telemetry (ext_id, service_owner, app_name, app_version, time_generated, time_ingested, dupe_count, data)
-                        SELECT ext_id, service_owner, app_name, app_version, time_generated, time_ingested, 0 as dupe_count, data FROM telemetry_import
+                        INSERT INTO monitoring.telemetry (ext_id, service_owner, app_name, app_version, time_generated, time_ingested, dupe_count, seeded, data)
+                        SELECT ext_id, service_owner, app_name, app_version, time_generated, time_ingested, 0 as dupe_count, seeded, data FROM telemetry_import
                         ON CONFLICT (service_owner, ext_id) DO UPDATE SET dupe_count = monitoring.telemetry.dupe_count + 1
                         RETURNING ext_id, time_ingested;
                     """;
@@ -178,6 +193,7 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
                     if (timeIngested != ingestionTimestamp)
                         dupes.Add(extId);
                 }
+                written = telemetry.Count - dupes.Count;
 
                 _logger.LogInformation(
                     "Inserted {Written}/{Total} rows into telemetry table, found {DupeCount} duplicates",
@@ -190,10 +206,7 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
 
         // 4. update queries table with 'queried_until'
         {
-            var to =
-                telemetry.Count - dupes.Count > 0
-                    ? telemetry.Where(t => !dupes.Contains(t.ExtId)).Max(t => t.TimeGenerated)
-                    : searchTo;
+            var to = written > 0 ? telemetry.Where(t => !dupes.Contains(t.ExtId)).Max(t => t.TimeGenerated) : searchTo;
             await using var command = connection.CreateCommand();
             command.CommandText = """
                     INSERT INTO monitoring.queries (service_owner, name, hash, queried_until)

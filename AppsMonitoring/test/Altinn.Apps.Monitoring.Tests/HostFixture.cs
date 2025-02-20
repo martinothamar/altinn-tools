@@ -19,6 +19,8 @@ internal sealed class HostFixture : WebApplicationFactory<Program>
         Services.GetRequiredService<TimeProvider>() as FakeTimeProvider
         ?? throw new InvalidOperationException("TimeProvider is not FakeTimeProvider");
 
+    public Seeder Seeder => Services.GetRequiredService<Seeder>();
+
     public Repository Repository => Services.GetRequiredService<Repository>();
 
     public Orchestrator Orchestrator => Services.GetRequiredService<Orchestrator>();
@@ -76,6 +78,12 @@ internal sealed class HostFixture : WebApplicationFactory<Program>
 
     private void ConfigureServices(IServiceCollection services)
     {
+        services.Configure<AppConfiguration>(options =>
+        {
+            options.DisableOrchestrator = true;
+            options.DisableSeeder = true;
+        });
+
         var timeProvider = new FakeTimeProvider(new DateTimeOffset(2025, 1, 1, 12, 0, 0, TimeSpan.Zero));
         services.AddSingleton<TimeProvider>(timeProvider);
 

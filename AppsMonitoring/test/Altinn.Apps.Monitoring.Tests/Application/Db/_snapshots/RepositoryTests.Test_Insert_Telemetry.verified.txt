@@ -16,7 +16,8 @@
           AppName: app-name,
           AppVersion: 8.0.0,
           TimeGenerated: 2025-01-01T11:45:00Z,
-          TimeIngested: 2025-01-01T12:00:00Z
+          TimeIngested: 2025-01-01T12:00:00Z,
+          Seeded: false
         }
       ]
     },
@@ -29,7 +30,8 @@
           AppName: app-name,
           AppVersion: 8.0.0,
           TimeGenerated: 2025-01-01T11:45:00Z,
-          TimeIngested: 2025-01-01T12:00:00Z
+          TimeIngested: 2025-01-01T12:00:00Z,
+          Seeded: false
         }
       ],
       Queries: [
@@ -41,7 +43,8 @@
           QueriedUntil: 2025-01-01T11:45:00Z
         }
       ]
-    }
+    },
+    PersistedEntities: 1
   },
   {
     Desc: Second write with existing data (test for idempotency),
@@ -56,7 +59,8 @@
           AppName: app-name,
           AppVersion: 8.0.0,
           TimeGenerated: 2025-01-01T11:45:00Z,
-          TimeIngested: 2025-01-01T12:00:00Z
+          TimeIngested: 2025-01-01T12:00:00Z,
+          Seeded: false
         }
       ],
       Queries: [
@@ -78,7 +82,8 @@
           AppName: app-name,
           AppVersion: 8.0.0,
           TimeGenerated: 2025-01-01T11:45:00Z,
-          TimeIngested: 2025-01-01T12:10:00Z
+          TimeIngested: 2025-01-01T12:10:00Z,
+          Seeded: false
         }
       ]
     },
@@ -92,7 +97,8 @@
           AppVersion: 8.0.0,
           TimeGenerated: 2025-01-01T11:45:00Z,
           TimeIngested: 2025-01-01T12:00:00Z,
-          DupeCount: 1
+          DupeCount: 1,
+          Seeded: false
         }
       ],
       Queries: [
@@ -120,7 +126,8 @@
           AppVersion: 8.0.0,
           TimeGenerated: 2025-01-01T11:45:00Z,
           TimeIngested: 2025-01-01T12:00:00Z,
-          DupeCount: 1
+          DupeCount: 1,
+          Seeded: false
         }
       ],
       Queries: [
@@ -143,7 +150,8 @@
           AppVersion: 8.0.0,
           TimeGenerated: 2025-01-01T11:45:00Z,
           TimeIngested: 2025-01-01T12:20:00Z,
-          DupeCount: 1
+          DupeCount: 1,
+          Seeded: false
         }
       ]
     },
@@ -157,7 +165,8 @@
           AppVersion: 8.0.0,
           TimeGenerated: 2025-01-01T11:45:00Z,
           TimeIngested: 2025-01-01T12:00:00Z,
-          DupeCount: 1
+          DupeCount: 1,
+          Seeded: false
         },
         {
           Id: 3,
@@ -166,7 +175,8 @@
           AppName: app-name,
           AppVersion: 8.0.0,
           TimeGenerated: 2025-01-01T11:45:00Z,
-          TimeIngested: 2025-01-01T12:20:00Z
+          TimeIngested: 2025-01-01T12:20:00Z,
+          Seeded: false
         }
       ],
       Queries: [
@@ -185,6 +195,7 @@
           QueriedUntil: 2025-01-01T11:45:00Z
         }
       ]
-    }
+    },
+    PersistedEntities: 1
   }
 ]

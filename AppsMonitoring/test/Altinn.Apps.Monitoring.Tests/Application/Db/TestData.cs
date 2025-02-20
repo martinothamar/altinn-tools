@@ -57,6 +57,7 @@ internal static class TestData
             TimeGenerated = timeGenerated ?? timeProvider.GetCurrentInstant().Minus(Duration.FromMinutes(15)),
             TimeIngested = timeIngested ?? timeProvider.GetCurrentInstant(),
             DupeCount = 0,
+            Seeded = false,
             Data = dataGenerator?.Invoke() ?? GenerateTelemetryTraceData(),
         };
     }

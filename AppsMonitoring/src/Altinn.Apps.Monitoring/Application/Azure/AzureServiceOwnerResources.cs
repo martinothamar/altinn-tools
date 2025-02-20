@@ -4,11 +4,17 @@ using Azure.ResourceManager;
 using Azure.ResourceManager.OperationalInsights;
 using Azure.ResourceManager.Resources;
 using Microsoft.Extensions.Caching.Hybrid;
+using Microsoft.Extensions.Options;
 
 namespace Altinn.Apps.Monitoring.Application.Azure;
 
-internal sealed class AzureServiceOwnerResources(AzureClients clients, HybridCache cache)
+internal sealed class AzureServiceOwnerResources(
+    IOptionsMonitor<AppConfiguration> config,
+    AzureClients clients,
+    HybridCache cache
+)
 {
+    private readonly IOptionsMonitor<AppConfiguration> _config = config;
     private readonly ArmClient _armClient = clients.ArmClient;
     private readonly HybridCache _cache = cache;
 
@@ -29,8 +35,9 @@ internal sealed class AzureServiceOwnerResources(AzureClients clients, HybridCac
             static async ValueTask<AzureServiceOwnerResourcesRecord?> (state, cancellationToken) =>
             {
                 var (self, serviceOwner) = state;
+                var config = self._config.CurrentValue;
 
-                var env = "prod"; // TODO: from env?
+                var env = config.AltinnEnvironment;
                 var subscription = await self
                     ._armClient.GetSubscriptions()
                     .GetAsync(

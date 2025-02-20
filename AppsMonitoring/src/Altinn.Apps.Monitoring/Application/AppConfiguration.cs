@@ -8,9 +8,13 @@ public sealed class AppConfiguration
     public string SlackAccessToken { get; set; } = null!;
     public string SlackChannel { get; set; } = null!;
 
+    public string AltinnEnvironment { get; set; } = "at24";
+
     public string DbConnectionString { get; set; } = null!;
+    public string SeedSqliteDbPath { get; set; } = Path.Combine("data", "data.db");
 
     internal bool DisableOrchestrator { get; set; }
+    internal bool DisableSeeder { get; set; }
 
     internal TaskCompletionSource? OrchestratorStartSignal { get; set; }
 }
