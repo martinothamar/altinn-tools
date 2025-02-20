@@ -1,6 +1,7 @@
 using Altinn.Apps.Monitoring.Application.Azure;
 using Altinn.Apps.Monitoring.Application.Db;
 using Altinn.Apps.Monitoring.Application.DbUp;
+using Altinn.Apps.Monitoring.Application.Slack;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Npgsql;
 
@@ -59,6 +60,7 @@ internal static class DIExtensions
                     .UseNodaTime()
         );
         builder.Services.TryAddSingleton<Repository>();
+        builder.Services.TryAddSingleton<DistributedLocking>();
 
         // Azure services/infra
         builder.Services.AddHybridCache();
@@ -76,6 +78,10 @@ internal static class DIExtensions
             sp.GetRequiredService<AzureServiceOwnerMonitorAdapter>()
         );
         builder.Services.TryAddSingleton<IQueryLoader, StaticQueryLoader>();
+
+        // Slack
+        builder.Services.TryAddSingleton<IAlerter, SlackAlerter>();
+        builder.Services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<IAlerter>());
 
         return builder;
     }

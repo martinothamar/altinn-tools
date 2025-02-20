@@ -69,6 +69,26 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
         return count > 0;
     }
 
+    private async ValueTask<TelemetryEntity> ReadTelemetryEntity(
+        NpgsqlDataReader reader,
+        CancellationToken cancellationToken
+    )
+    {
+        return new TelemetryEntity
+        {
+            Id = reader.GetInt64(0),
+            ExtId = reader.GetString(1),
+            ServiceOwner = reader.GetString(2),
+            AppName = reader.GetString(3),
+            AppVersion = reader.GetString(4),
+            TimeGenerated = reader.GetFieldValue<Instant>(5),
+            TimeIngested = reader.GetFieldValue<Instant>(6),
+            DupeCount = reader.GetInt64(7),
+            Seeded = reader.GetBoolean(8),
+            Data = reader.GetFieldValue<TelemetryData>(9),
+        };
+    }
+
     public async ValueTask<IReadOnlyList<TelemetryEntity>> ListTelemetry(
         ServiceOwner? serviceOwner = null,
         CancellationToken cancellationToken = default
@@ -89,24 +109,58 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
         var telemetry = new List<TelemetryEntity>(16);
         while (await reader.ReadAsync(cancellationToken))
         {
-            var item = new TelemetryEntity
-            {
-                Id = reader.GetInt64(0),
-                ExtId = reader.GetString(1),
-                ServiceOwner = reader.GetString(2),
-                AppName = reader.GetString(3),
-                AppVersion = reader.GetString(4),
-                TimeGenerated = reader.GetFieldValue<Instant>(5),
-                TimeIngested = reader.GetFieldValue<Instant>(6),
-                DupeCount = reader.GetInt64(7),
-                Seeded = reader.GetBoolean(8),
-                Data = reader.GetFieldValue<TelemetryData>(9),
-            };
+            var item = await ReadTelemetryEntity(reader, cancellationToken);
 
             telemetry.Add(item);
         }
 
         return telemetry;
+    }
+
+    public async ValueTask<IReadOnlyList<TelemetryEntity>> ListTelemetryFromSubscription(
+        Subscriber subscriber,
+        CancellationToken cancellationToken
+    )
+    {
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+
+        TelemetrySubscriptionEntity? subscription = null;
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT * FROM monitoring.telemetry_subscriptions WHERE subscriber = @subscriber";
+            command.Parameters.AddWithValue("subscriber", subscriber.ToString());
+
+            await command.PrepareAsync(cancellationToken);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                subscription = new TelemetrySubscriptionEntity
+                {
+                    Subscriber = Enum.Parse<Subscriber>(reader.GetString(0)),
+                    Offset = reader.GetInt64(1),
+                };
+            }
+        }
+
+        {
+            var offset = subscription?.Offset ?? 0;
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT * FROM monitoring.telemetry WHERE id > @offset ORDER BY id ASC";
+            command.Parameters.AddWithValue("offset", offset);
+
+            await command.PrepareAsync(cancellationToken);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+            var telemetry = new List<TelemetryEntity>(16);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var item = await ReadTelemetryEntity(reader, cancellationToken);
+
+                telemetry.Add(item);
+            }
+
+            return telemetry;
+        }
     }
 
     public async ValueTask<int> InsertTelemetry(
@@ -225,4 +279,113 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
         await transaction.CommitAsync(cancellationToken);
         return written;
     }
+
+    public async ValueTask<IReadOnlyList<AlertEntity>> ListAlerts(
+        IReadOnlyList<long> telemetryIds,
+        CancellationToken cancellationToken
+    )
+    {
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT * FROM monitoring.alerts WHERE telemetry_id = ANY(@telemetry_ids)";
+        command.Parameters.AddWithValue("telemetry_ids", telemetryIds);
+
+        await command.PrepareAsync(cancellationToken);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+        var alerts = new List<AlertEntity>(16);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var item = new AlertEntity
+            {
+                Id = reader.GetInt64(0),
+                State = Enum.Parse<AlertState>(reader.GetString(1)),
+                TelemetryId = reader.GetInt64(2),
+                ExtId = reader.GetString(3),
+            };
+
+            alerts.Add(item);
+        }
+
+        return alerts;
+    }
+
+    public async ValueTask SaveAlert(AlertEntity alert, CancellationToken cancellationToken)
+    {
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                    INSERT INTO monitoring.alerts (state, telemetry_id, ext_id)
+                    VALUES (@state, @telemetry_id, @ext_id)
+                    ON CONFLICT (telemetry_id) DO UPDATE SET state = EXCLUDED.state, ext_id = EXCLUDED.ext_id
+                """;
+            command.Parameters.AddWithValue("state", alert.State.ToString());
+            command.Parameters.AddWithValue("telemetry_id", alert.TelemetryId);
+            if (alert.ExtId is not null)
+                command.Parameters.AddWithValue("ext_id", alert.ExtId);
+            else
+                command.Parameters.AddWithValue("ext_id", DBNull.Value);
+
+            await command.PrepareAsync(cancellationToken);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                    INSERT INTO monitoring.telemetry_subscriptions (subscriber, offset)
+                    VALUES (@subscriber, @offset)
+                    ON CONFLICT (subscriber) DO UPDATE SET offset = EXCLUDED.offset
+                """;
+            command.Parameters.AddWithValue("subscriber", Subscriber.Alerter.ToString());
+            command.Parameters.AddWithValue("offset", alert.TelemetryId);
+
+            await command.PrepareAsync(cancellationToken);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    // public async ValueTask<int> InsertAlerts(IReadOnlyList<AlertEntity> alerts, CancellationToken cancellationToken)
+    // {
+    //     if (alerts.Count == 0)
+    //         return 0;
+
+    //     await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+    //     await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+    //     int written = 0;
+    //     await using var import = connection.BeginBinaryImport(
+    //         "COPY monitoring.alerts (state, telemetry_id, ext_id) FROM STDIN (FORMAT binary)"
+    //     );
+
+    //     long lastOffset = 0;
+    //     for (int i = 0; i < alerts.Count; i++)
+    //     {
+    //         var item = alerts[i];
+    //         await import.StartRowAsync(cancellationToken);
+    //         await import.WriteAsync(item.State.ToString(), NpgsqlDbType.Text, cancellationToken);
+    //         await import.WriteAsync(item.TelemetryId, NpgsqlDbType.Bigint, cancellationToken);
+    //         await import.WriteAsync(item.ExtId, NpgsqlDbType.Text, cancellationToken);
+
+    //         lastOffset = Math.Max(lastOffset, item.TelemetryId);
+    //     }
+
+    //     await using var command = connection.CreateCommand();
+    //     command.CommandText = """
+    //             INSERT INTO monitoring.telemetry_subscriptions (subscriber, offset)
+    //             VALUES (@subscriber, @offset)
+    //             ON CONFLICT (subscriber) DO UPDATE SET offset = EXCLUDED.offset
+    //         """;
+    //     command.Parameters.AddWithValue("subscriber", Subscriber.Alerter.ToString());
+    //     command.Parameters.AddWithValue("offset", lastOffset);
+
+    //     await command.PrepareAsync(cancellationToken);
+    //     await command.ExecuteNonQueryAsync(cancellationToken);
+
+    //     await transaction.CommitAsync(cancellationToken);
+    //     return written;
+    // }
 }

@@ -23,17 +23,19 @@ internal sealed class Orchestrator(
     IHostApplicationLifetime applicationLifetime,
     Repository repository,
     IQueryLoader queryLoader,
-    TimeProvider timeProvider
+    TimeProvider timeProvider,
+    DistributedLocking locking
 ) : IHostedService
 {
     private readonly ILogger<Orchestrator> _logger = logger;
     private readonly IOptionsMonitor<AppConfiguration> _appConfiguration = appConfiguration;
     private readonly IServiceOwnerDiscovery _serviceOwnerDiscovery = serviceOwnerDiscovery;
     private readonly IServiceOwnerLogsAdapter _serviceOwnerLogs = serviceOwnerLogs;
-    private readonly IHostApplicationLifetime _applicationLifetime = applicationLifetime;
+    private readonly IHostApplicationLifetime _lifetime = applicationLifetime;
     private readonly Repository _repository = repository;
     private readonly IQueryLoader _queryLoader = queryLoader;
     private readonly TimeProvider _timeProvider = timeProvider;
+    private readonly DistributedLocking _locking = locking;
 
     private Task? _serviceOwnerDiscoveryThread;
     private ConcurrentDictionary<ServiceOwner, Task> _serviceOwnerThreads = new();
@@ -62,7 +64,7 @@ internal sealed class Orchestrator(
         }
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
-            _applicationLifetime.ApplicationStopping
+            _lifetime.ApplicationStopping
         );
         cancellationToken = _cancellationTokenSource.Token;
 
@@ -79,10 +81,23 @@ internal sealed class Orchestrator(
         if (options.OrchestratorStartSignal is not null)
             await options.OrchestratorStartSignal.Task;
 
-        var timer = new PeriodicTimer(options.PollInterval, _timeProvider);
-
         try
         {
+            await using var handle = await locking.Lock(DistributedLockName.Orchestrator, cancellationToken);
+            if (handle.HandleLostToken.CanBeCanceled)
+            {
+                _logger.LogInformation("Will monitor for lost orchestrator lock");
+                handle.HandleLostToken.Register(() =>
+                {
+                    if (cancellationToken.IsCancellationRequested)
+                        return; // We are already shutting down
+                    _logger.LogError("Orchestrator lock lost, stopping application");
+                    _lifetime.StopApplication();
+                });
+            }
+
+            using var timer = new PeriodicTimer(options.PollInterval, _timeProvider);
+
             do
             {
                 var serviceOwners = await _serviceOwnerDiscovery.Discover(cancellationToken);
@@ -111,7 +126,7 @@ internal sealed class Orchestrator(
         catch (Exception ex)
         {
             _logger.LogError(ex, "Service owner discovery thread failed");
-            _applicationLifetime.StopApplication();
+            _lifetime.StopApplication();
         }
     }
 
@@ -122,7 +137,7 @@ internal sealed class Orchestrator(
         if (options.OrchestratorStartSignal is not null)
             await options.OrchestratorStartSignal.Task;
 
-        var timer = new PeriodicTimer(options.PollInterval, _timeProvider);
+        using var timer = new PeriodicTimer(options.PollInterval, _timeProvider);
 
         try
         {
@@ -137,7 +152,7 @@ internal sealed class Orchestrator(
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    _logger.LogError(ex, "Failed loading queries, trying again soon...");
+                    _logger.LogError(ex, "[{ServiceOwner}] failed loading queries, trying again soon...", serviceOwner);
                     continue;
                 }
                 foreach (var query in queries)
@@ -212,7 +227,7 @@ internal sealed class Orchestrator(
         catch (Exception ex)
         {
             _logger.LogError(ex, "[{ServiceOwner}] thread failed, crashing..", serviceOwner);
-            _applicationLifetime.StopApplication();
+            _lifetime.StopApplication();
         }
     }
 

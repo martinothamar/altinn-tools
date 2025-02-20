@@ -10,13 +10,15 @@ internal sealed class Seeder(
     ILogger<Seeder> logger,
     IOptions<AppConfiguration> config,
     Repository repository,
-    NpgsqlDataSource dataSource
+    NpgsqlDataSource dataSource,
+    DistributedLocking locking
 ) : IHostedService
 {
     private readonly ILogger<Seeder> _logger = logger;
     private readonly Repository _repository = repository;
     private readonly NpgsqlDataSource _dataSource = dataSource;
     private readonly AppConfiguration _config = config.Value;
+    private readonly DistributedLocking _locking = locking;
     private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public Task Completion => _completion.Task;
@@ -25,6 +27,8 @@ internal sealed class Seeder(
     {
         try
         {
+            await using var handle = await _locking.Lock(DistributedLockName.DbSeeder, cancellationToken);
+
             if (_config.DisableSeeder)
             {
                 _logger.LogInformation("Seeder disabled");

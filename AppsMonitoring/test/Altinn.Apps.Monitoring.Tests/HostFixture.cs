@@ -6,14 +6,16 @@ using DotNet.Testcontainers.Containers;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Time.Testing;
 using Testcontainers.PostgreSql;
+using WireMock.Server;
 
 namespace Altinn.Apps.Monitoring.Tests;
 
 internal sealed class HostFixture : WebApplicationFactory<Program>
 {
     public PostgreSqlContainer PostgreSqlContainer { get; }
+    public WireMockServer MockServer { get; }
 
-    private readonly Action<IServiceCollection>? _configureServices;
+    private readonly Action<IServiceCollection, HostFixture>? _configureServices;
 
     public FakeTimeProvider TimeProvider =>
         Services.GetRequiredService<TimeProvider>() as FakeTimeProvider
@@ -27,9 +29,14 @@ internal sealed class HostFixture : WebApplicationFactory<Program>
 
     public IQueryLoader QueryLoader => Services.GetRequiredService<IQueryLoader>();
 
-    private HostFixture(PostgreSqlContainer postgreSqlContainer, Action<IServiceCollection>? configureServices)
+    private HostFixture(
+        PostgreSqlContainer postgreSqlContainer,
+        WireMockServer mockServer,
+        Action<IServiceCollection, HostFixture>? configureServices
+    )
     {
         PostgreSqlContainer = postgreSqlContainer;
+        MockServer = mockServer;
         _configureServices = configureServices;
     }
 
@@ -78,16 +85,18 @@ internal sealed class HostFixture : WebApplicationFactory<Program>
 
     private void ConfigureServices(IServiceCollection services)
     {
+        services.AddSingleton(MockServer);
         services.Configure<AppConfiguration>(options =>
         {
             options.DisableOrchestrator = true;
             options.DisableSeeder = true;
+            options.DisableAlerter = true;
         });
 
         var timeProvider = new FakeTimeProvider(new DateTimeOffset(2025, 1, 1, 12, 0, 0, TimeSpan.Zero));
         services.AddSingleton<TimeProvider>(timeProvider);
 
-        _configureServices?.Invoke(services);
+        _configureServices?.Invoke(services, this);
     }
 
     private static string FindSolutionDir()
@@ -102,7 +111,7 @@ internal sealed class HostFixture : WebApplicationFactory<Program>
         throw new Exception("Solution directory not found");
     }
 
-    public static async Task<HostFixture> Create(Action<IServiceCollection>? configureServices = null)
+    public static async Task<HostFixture> Create(Action<IServiceCollection, HostFixture>? configureServices = null)
     {
         var solutionDir = FindSolutionDir();
 
@@ -130,7 +139,9 @@ internal sealed class HostFixture : WebApplicationFactory<Program>
                 .Build();
             await postgreSqlContainer.StartAsync(cancellationToken);
 
-            fixture = new HostFixture(postgreSqlContainer, configureServices);
+            var server = WireMockServer.Start();
+
+            fixture = new HostFixture(postgreSqlContainer, server, configureServices);
 
             return fixture;
         }

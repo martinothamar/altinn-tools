@@ -9,14 +9,16 @@ public class SeederTests
     {
         var cancellationToken = TestContext.Current.CancellationToken;
 
-        await using var fixture = await HostFixture.Create(services =>
-        {
-            services.Configure<AppConfiguration>(config =>
+        await using var fixture = await HostFixture.Create(
+            (services, _) =>
             {
-                config.DisableSeeder = false;
-                config.SeedSqliteDbPath = Path.Combine("data", "mini.db");
-            });
-        });
+                services.Configure<AppConfiguration>(config =>
+                {
+                    config.DisableSeeder = false;
+                    config.SeedSqliteDbPath = Path.Combine("data", "mini.db");
+                });
+            }
+        );
 
         using var _ = await fixture.Start(cancellationToken);
 

@@ -1,20 +1,28 @@
 using System.Data;
 using System.Reflection;
+using Altinn.Apps.Monitoring.Application.Db;
 using DbUp;
 using DbUp.Engine;
 using Microsoft.Extensions.Options;
 
 namespace Altinn.Apps.Monitoring.Application.DbUp;
 
-internal sealed class Migrator(ILogger<Migrator> logger, IOptions<AppConfiguration> appConfiguration) : IHostedService
+internal sealed class Migrator(
+    ILogger<Migrator> logger,
+    IOptions<AppConfiguration> appConfiguration,
+    DistributedLocking locking
+) : IHostedService
 {
     private readonly ILogger<Migrator> _logger = logger;
     private readonly AppConfiguration _appConfiguration = appConfiguration.Value;
+    private readonly DistributedLocking _locking = locking;
 
-    public Task StartAsync(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
         try
         {
+            await using var _ = await _locking.Lock(DistributedLockName.DbMigrator, cancellationToken);
+
             var connectionString = _appConfiguration.DbConnectionString;
             var upgrader = DeployChanges
                 .To.PostgresqlDatabase(connectionString)
@@ -45,8 +53,6 @@ internal sealed class Migrator(ILogger<Migrator> logger, IOptions<AppConfigurati
             _logger.LogError(ex, "Failed seeding database");
             throw;
         }
-
-        return Task.CompletedTask;
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
@@ -78,6 +84,19 @@ internal sealed class Script0001Initial : IScript
                     hash TEXT NOT NULL,
                     queried_until TIMESTAMPTZ NOT NULL,
                     UNIQUE (service_owner, hash)
+                );
+
+                CREATE TABLE monitoring.telemetry_subscriptions (
+                    subscriber TEXT NOT PRIMARY KEY,
+                    offset BIGSERIAL NOT NULL
+                );
+
+                CREATE TABLE monitoring.alerts (
+                    id BIGSERIAL PRIMARY KEY,
+                    state TEXT NOT NULL,
+                    telemetry_id BIGSERIAL NOT NULL REFERENCES monitoring.telemetry (id),
+                    ext_id TEXT,
+                    UNIQUE (telemetry_id)
                 );
             """;
     }

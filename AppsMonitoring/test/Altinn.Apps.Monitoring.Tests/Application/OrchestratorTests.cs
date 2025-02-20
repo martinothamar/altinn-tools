@@ -31,25 +31,27 @@ public class OrchestratorTests
         var startSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var pollInterval = TimeSpan.FromMinutes(10);
         var latency = TimeSpan.FromSeconds(5);
-        var fixture = await HostFixture.Create(services =>
-        {
-            services.Configure<FakeConfig>(config => config.Latency = latency);
-            services.AddSingleton<IServiceOwnerDiscovery, FakeServiceOwnerDiscovery>();
-            services.AddSingleton<IQueryLoader, FakeQueryLoader>();
-            services.AddSingleton<FakeTelemetryAdapter>();
-            services.AddSingleton<IServiceOwnerLogsAdapter>(sp => sp.GetRequiredService<FakeTelemetryAdapter>());
-            services.AddSingleton<IServiceOwnerTraceAdapter>(sp => sp.GetRequiredService<FakeTelemetryAdapter>());
-            services.AddSingleton<IServiceOwnerMetricsAdapter>(sp => sp.GetRequiredService<FakeTelemetryAdapter>());
-
-            services.Configure<AppConfiguration>(options =>
+        var fixture = await HostFixture.Create(
+            (services, _) =>
             {
-                options.DisableOrchestrator = false;
-                options.OrchestratorStartSignal = startSignal;
-                options.PollInterval = pollInterval;
-            });
+                services.Configure<FakeConfig>(config => config.Latency = latency);
+                services.AddSingleton<IServiceOwnerDiscovery, FakeServiceOwnerDiscovery>();
+                services.AddSingleton<IQueryLoader, FakeQueryLoader>();
+                services.AddSingleton<FakeTelemetryAdapter>();
+                services.AddSingleton<IServiceOwnerLogsAdapter>(sp => sp.GetRequiredService<FakeTelemetryAdapter>());
+                services.AddSingleton<IServiceOwnerTraceAdapter>(sp => sp.GetRequiredService<FakeTelemetryAdapter>());
+                services.AddSingleton<IServiceOwnerMetricsAdapter>(sp => sp.GetRequiredService<FakeTelemetryAdapter>());
 
-            configureServices(services);
-        });
+                services.Configure<AppConfiguration>(options =>
+                {
+                    options.DisableOrchestrator = false;
+                    options.OrchestratorStartSignal = startSignal;
+                    options.PollInterval = pollInterval;
+                });
+
+                configureServices(services);
+            }
+        );
 
         using var _ = await fixture.Start(cancellationToken);
 
