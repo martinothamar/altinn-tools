@@ -6,9 +6,9 @@ using Microsoft.Extensions.Options;
 
 namespace Altinn.Apps.Monitoring.Application.DbUp;
 
-internal sealed class Seeder(ILogger<Seeder> logger, IOptions<AppConfiguration> appConfiguration) : IHostedService
+internal sealed class Migrator(ILogger<Migrator> logger, IOptions<AppConfiguration> appConfiguration) : IHostedService
 {
-    private readonly ILogger<Seeder> _logger = logger;
+    private readonly ILogger<Migrator> _logger = logger;
     private readonly AppConfiguration _appConfiguration = appConfiguration.Value;
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -57,14 +57,26 @@ internal sealed class Script0001Initial : IScript
     public string ProvideScript(Func<IDbCommand> dbCommandFactory)
     {
         return """
-                CREATE TABLE IF NOT EXISTS monitoring.errors (
+                CREATE TABLE monitoring.telemetry (
                     id BIGSERIAL PRIMARY KEY,
+                    ext_id TEXT NOT NULL,
                     service_owner TEXT NOT NULL,
                     app_name TEXT NOT NULL,
                     app_version TEXT NOT NULL,
                     time_generated TIMESTAMPTZ NOT NULL,
                     time_ingested TIMESTAMPTZ NOT NULL,
-                    data JSONB NOT NULL
+                    dupe_count BIGINT NOT NULL,
+                    data JSONB NOT NULL,
+                    UNIQUE (service_owner, ext_id)
+                );
+
+                CREATE TABLE monitoring.queries (
+                    id BIGSERIAL PRIMARY KEY,
+                    service_owner TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    hash TEXT NOT NULL,
+                    queried_until TIMESTAMPTZ NOT NULL,
+                    UNIQUE (service_owner, hash)
                 );
             """;
     }

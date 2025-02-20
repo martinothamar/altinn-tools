@@ -1,34 +1,36 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using NodaTime;
 
 namespace Altinn.Apps.Monitoring.Application.Db;
 
-public sealed class ErrorEntity
+public sealed record TelemetryEntity
 {
     public required long Id { get; init; }
+    public required string ExtId { get; init; }
     public required string ServiceOwner { get; init; }
     public required string AppName { get; init; }
     public required string AppVersion { get; init; }
     public required Instant TimeGenerated { get; init; }
     public required Instant TimeIngested { get; init; }
-    public required ErrorData Data { get; init; }
+    public required long DupeCount { get; init; }
+    public required TelemetryData Data { get; init; }
 }
 
-[JsonDerivedType(typeof(ErrorTraceData), typeDiscriminator: "trace")]
-[JsonDerivedType(typeof(ErrorLogsData), typeDiscriminator: "logs")]
-public abstract class ErrorData
+[JsonDerivedType(typeof(TraceData), typeDiscriminator: "trace")]
+[JsonDerivedType(typeof(LogsData), typeDiscriminator: "logs")]
+[JsonDerivedType(typeof(MetricData), typeDiscriminator: "metric")]
+public abstract class TelemetryData
 {
     public required int AltinnErrorId { get; init; }
 
-    public static ErrorData Deserialize(string json)
+    public static TelemetryData Deserialize(string json)
     {
-        return JsonSerializer.Deserialize<ErrorData>(json, Config.JsonOptions) ?? throw new JsonException();
+        return JsonSerializer.Deserialize<TelemetryData>(json, Config.JsonOptions) ?? throw new JsonException();
     }
 
-    public static ErrorData Deserialize(byte[] json)
+    public static TelemetryData Deserialize(byte[] json)
     {
-        return JsonSerializer.Deserialize<ErrorData>(json, Config.JsonOptions) ?? throw new JsonException();
+        return JsonSerializer.Deserialize<TelemetryData>(json, Config.JsonOptions) ?? throw new JsonException();
     }
 
     public string Serialize()
@@ -42,7 +44,7 @@ public abstract class ErrorData
     }
 }
 
-public sealed class ErrorTraceData : ErrorData
+public sealed class TraceData : TelemetryData
 {
     public required int? InstanceOwnerPartyId { get; init; }
     public required Guid? InstanceId { get; init; }
@@ -54,12 +56,20 @@ public sealed class ErrorTraceData : ErrorData
     public required bool Success { get; init; }
     public required string? Result { get; init; }
     public required Duration Duration { get; init; }
-    public required Dictionary<string, string>? Attributes { get; init; }
+    public required Dictionary<string, string?>? Attributes { get; init; }
 }
 
-public sealed class ErrorLogsData : ErrorData
+public sealed class LogsData : TelemetryData
 {
     public required string? TraceId { get; init; }
     public required string? SpanId { get; init; }
     public required string Message { get; init; }
+    public required Dictionary<string, string?>? Attributes { get; init; }
+}
+
+public sealed class MetricData : TelemetryData
+{
+    public required string Name { get; init; }
+    public required double Value { get; init; }
+    public required Dictionary<string, string?>? Attributes { get; init; }
 }

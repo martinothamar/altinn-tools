@@ -14,8 +14,8 @@ internal sealed class AzureServiceOwnerResources(AzureClients clients, HybridCac
 
     private readonly HybridCacheEntryOptions _cacheEntryOptions = new()
     {
-        Expiration = TimeSpan.FromMinutes(10),
-        LocalCacheExpiration = TimeSpan.FromMinutes(10),
+        Expiration = TimeSpan.FromMinutes(30),
+        LocalCacheExpiration = TimeSpan.FromMinutes(30),
     };
 
     public ValueTask<AzureServiceOwnerResourcesRecord?> GetResources(

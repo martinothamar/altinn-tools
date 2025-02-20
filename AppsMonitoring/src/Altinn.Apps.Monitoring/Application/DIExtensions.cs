@@ -1,6 +1,7 @@
 using Altinn.Apps.Monitoring.Application.Azure;
 using Altinn.Apps.Monitoring.Application.Db;
 using Altinn.Apps.Monitoring.Application.DbUp;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Npgsql;
 
 namespace Altinn.Apps.Monitoring.Application;
@@ -9,10 +10,12 @@ internal static class DIExtensions
 {
     public static IHostApplicationBuilder AddApplication(this IHostApplicationBuilder builder)
     {
-        builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
+        builder.Configuration.AddJsonFile("appsettings.Secret.json", optional: true, reloadOnChange: true);
+
+        builder.Services.TryAddSingleton<TimeProvider>(TimeProvider.System);
 
         builder.Services.Configure<AppConfiguration>(builder.Configuration.GetSection(nameof(AppConfiguration)));
-        builder.Services.AddHostedService<Seeder>();
+        builder.Services.AddHostedService<Migrator>();
 
         var connString = builder.Configuration.GetSection(nameof(AppConfiguration))[
             nameof(AppConfiguration.DbConnectionString)
@@ -30,13 +33,24 @@ internal static class DIExtensions
         );
 
         builder.Services.AddHybridCache();
-        builder.Services.AddSingleton<AzureClients>();
-        builder.Services.AddSingleton<AzureServiceOwnerResources>();
-        builder.Services.AddSingleton<IServiceOwnerDiscovery, AzureServiceOwnerDiscovery>();
-        builder.Services.AddSingleton<IServiceOwnerLogsAdapter, AzureServiceOwnerLogsAdapter>();
-        builder.Services.AddSingleton<Repository>();
+        builder.Services.TryAddSingleton<AzureClients>();
+        builder.Services.TryAddSingleton<AzureServiceOwnerResources>();
+        builder.Services.TryAddSingleton<IServiceOwnerDiscovery, AzureServiceOwnerDiscovery>();
+        builder.Services.TryAddSingleton<AzureServiceOwnerMonitorAdapter>();
+        builder.Services.TryAddSingleton<IServiceOwnerLogsAdapter>(sp =>
+            sp.GetRequiredService<AzureServiceOwnerMonitorAdapter>()
+        );
+        builder.Services.TryAddSingleton<IServiceOwnerTraceAdapter>(sp =>
+            sp.GetRequiredService<AzureServiceOwnerMonitorAdapter>()
+        );
+        builder.Services.TryAddSingleton<IServiceOwnerMetricsAdapter>(sp =>
+            sp.GetRequiredService<AzureServiceOwnerMonitorAdapter>()
+        );
+        builder.Services.TryAddSingleton<IQueryLoader, StaticQueryLoader>();
+        builder.Services.TryAddSingleton<Repository>();
 
-        builder.Services.AddHostedService<Orchestrator>();
+        builder.Services.TryAddSingleton<Orchestrator>();
+        builder.Services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<Orchestrator>());
         return builder;
     }
 }

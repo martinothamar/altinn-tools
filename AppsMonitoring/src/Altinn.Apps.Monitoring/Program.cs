@@ -2,8 +2,6 @@ using Altinn.Apps.Monitoring.Application;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.HttpOverrides;
 
-DotEnv.Load();
-
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();

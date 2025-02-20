@@ -1,8 +1,19 @@
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Threading.Channels;
 using Altinn.Apps.Monitoring.Application.Db;
 using Altinn.Apps.Monitoring.Domain;
 using Microsoft.Extensions.Options;
 
 namespace Altinn.Apps.Monitoring.Application;
+
+public readonly record struct ServiceOwnerQueryResult(
+    ServiceOwner ServiceOwner,
+    Query Query,
+    Instant SearchFrom,
+    Instant SearchTo,
+    IReadOnlyList<TelemetryEntity> Telemetry
+);
 
 internal sealed class Orchestrator(
     ILogger<Orchestrator> logger,
@@ -11,6 +22,7 @@ internal sealed class Orchestrator(
     IServiceOwnerLogsAdapter serviceOwnerLogs,
     IHostApplicationLifetime applicationLifetime,
     Repository repository,
+    IQueryLoader queryLoader,
     TimeProvider timeProvider
 ) : IHostedService
 {
@@ -20,106 +32,191 @@ internal sealed class Orchestrator(
     private readonly IServiceOwnerLogsAdapter _serviceOwnerLogs = serviceOwnerLogs;
     private readonly IHostApplicationLifetime _applicationLifetime = applicationLifetime;
     private readonly Repository _repository = repository;
+    private readonly IQueryLoader _queryLoader = queryLoader;
     private readonly TimeProvider _timeProvider = timeProvider;
 
-    private Task[] _serviceOwnerThreads;
+    private Task? _serviceOwnerDiscoveryThread;
+    private ConcurrentDictionary<ServiceOwner, Task> _serviceOwnerThreads = new();
+    private Channel<ServiceOwnerQueryResult>? _results;
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    public ChannelReader<ServiceOwnerQueryResult> Results =>
+        _results?.Reader ?? throw new InvalidOperationException("Not started");
+
+    private CancellationTokenSource? _cancellationTokenSource;
+
+    public Task StartAsync(CancellationToken cancellationToken)
     {
-        var serviceOwners = await _serviceOwnerDiscovery.Discover(cancellationToken);
+        _results = Channel.CreateBounded<ServiceOwnerQueryResult>(
+            new BoundedChannelOptions(128)
+            {
+                FullMode = BoundedChannelFullMode.DropOldest,
+                SingleReader = false,
+                SingleWriter = false,
+            }
+        );
+        if (_appConfiguration.CurrentValue.DisableOrchestrator)
+        {
+            _logger.LogInformation("Orchestrator disabled");
+            _results.Writer.Complete();
+            return Task.CompletedTask;
+        }
+        _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            _applicationLifetime.ApplicationStopping
+        );
+        cancellationToken = _cancellationTokenSource.Token;
 
-        _serviceOwnerThreads = serviceOwners
-            .Select(serviceOwner => ServiceOwnerThread(serviceOwner, cancellationToken))
-            .ToArray();
+        _serviceOwnerDiscoveryThread = Task.Run(
+            () => ServiceOwnerDiscoveryThread(_cancellationTokenSource.Token),
+            cancellationToken
+        );
+        return Task.CompletedTask;
     }
 
-    private async Task ServiceOwnerThread(ServiceOwner serviceOwner, CancellationToken cancellationToken)
+    private async Task ServiceOwnerDiscoveryThread(CancellationToken cancellationToken)
     {
         var options = _appConfiguration.CurrentValue;
+        if (options.OrchestratorStartSignal is not null)
+            await options.OrchestratorStartSignal.Task;
+
         var timer = new PeriodicTimer(options.PollInterval, _timeProvider);
 
         try
         {
-            var latestErrorTime = await _repository.GetLatestErrorGeneratedTime(serviceOwner, cancellationToken);
-            var searchFrom =
-                latestErrorTime
-                ?? _timeProvider
-                    .GetCurrentInstant()
-                    .Minus(Duration.FromDays(options.SearchFromDays))
-                    .Minus(Duration.FromSeconds(1));
-
-            _logger.LogInformation("[{ServiceOwner}] starting search from {SearchFrom}", serviceOwner, searchFrom);
-
             do
             {
-                try
+                var serviceOwners = await _serviceOwnerDiscovery.Discover(cancellationToken);
+
+                foreach (var serviceOwner in serviceOwners)
                 {
-                    var searchTimestamp = _timeProvider.GetCurrentInstant();
-                    var timeRange = searchTimestamp - searchFrom + Duration.FromMinutes(5);
-
-                    var queries = $"""
-                            AppDependencies
-                            | where TimeGenerated > todatetime('{searchFrom}')
-                            | where Success == false
-                            | where Target startswith "platform.altinn.no"
-                            | where (Name startswith "POST /storage" and Name endswith "/events" and OperationName startswith "PUT Process/NextElement");
-
-                            AppDependencies
-                            | where TimeGenerated > todatetime('{searchFrom}')
-                            | where Success == false
-                            | where Target startswith "platform.altinn.no"
-                            | where (Name startswith "POST /events" and OperationName startswith "PUT Process/NextElement")
-                            | join kind=inner AppRequests on OperationId;
-                        """;
-
-                    var tables = await _serviceOwnerLogs.Query(
+                    _ = _serviceOwnerThreads.GetOrAdd(
                         serviceOwner,
-                        queries,
-                        searchFrom,
-                        cancellationToken: cancellationToken
-                    );
-
-                    var totalRows = tables.Sum(t => t.Count);
-                    if (totalRows == 0)
-                    {
-                        searchFrom = searchTimestamp.Minus(Duration.FromMinutes(1));
-                        continue;
-                    }
-
-                    _logger.LogInformation(
-                        "[{ServiceOwner}] found {TotalRows} rows in {TableCount} tables",
-                        serviceOwner,
-                        totalRows,
-                        tables.Count
-                    );
-
-                    var errors = tables.SelectMany(t => t).ToArray();
-
-                    await _repository.InsertErrors(errors, cancellationToken);
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    _logger.LogError(
-                        ex,
-                        "Failed querying service owner {ServiceOwner}, trying again soon...",
-                        serviceOwner
+                        (serviceOwner, cancellationToken) =>
+                        {
+                            _logger.LogInformation("Starting service owner thread for {ServiceOwner}", serviceOwner);
+                            return Task.Run(
+                                () => ServiceOwnerThread(serviceOwner, cancellationToken),
+                                cancellationToken
+                            );
+                        },
+                        cancellationToken
                     );
                 }
             } while (await timer.WaitForNextTickAsync(cancellationToken));
         }
         catch (OperationCanceledException)
         {
-            _logger.LogInformation("Service owner thread cancelled");
+            _logger.LogInformation("Service owner discovery thread cancelled");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Service owner thread failed");
+            _logger.LogError(ex, "Service owner discovery thread failed");
             _applicationLifetime.StopApplication();
         }
     }
 
-    public Task StopAsync(CancellationToken cancellationToken)
+    private async Task ServiceOwnerThread(ServiceOwner serviceOwner, CancellationToken cancellationToken)
     {
-        return Task.WhenAll(_serviceOwnerThreads);
+        var options = _appConfiguration.CurrentValue;
+
+        if (options.OrchestratorStartSignal is not null)
+            await options.OrchestratorStartSignal.Task;
+
+        var timer = new PeriodicTimer(options.PollInterval, _timeProvider);
+
+        try
+        {
+            _logger.LogInformation("[{ServiceOwner}] starting querying thread", serviceOwner);
+
+            do
+            {
+                IReadOnlyList<Query> queries;
+                try
+                {
+                    queries = await _queryLoader.Load(cancellationToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogError(ex, "Failed loading queries, trying again soon...");
+                    continue;
+                }
+                foreach (var query in queries)
+                {
+                    try
+                    {
+                        var queryStates = await _repository.ListQueryStates(serviceOwner, query, cancellationToken);
+                        var queryState = queryStates.SingleOrDefault();
+
+                        var searchTimestamp = _timeProvider.GetCurrentInstant();
+                        var searchFrom =
+                            queryState?.QueriedUntil
+                            ?? searchTimestamp
+                                .Minus(Duration.FromDays(options.SearchFromDays))
+                                .Minus(Duration.FromSeconds(1));
+                        var searchTo = _timeProvider.GetCurrentInstant().Minus(Duration.FromMinutes(10));
+
+                        var tables = await _serviceOwnerLogs.Query(
+                            serviceOwner,
+                            query,
+                            searchFrom,
+                            searchTo,
+                            cancellationToken: cancellationToken
+                        );
+
+                        var totalRows = tables.Sum(t => t.Count);
+                        if (totalRows > 0)
+                        {
+                            _logger.LogInformation(
+                                "[{ServiceOwner}] found {TotalRows} rows in {TableCount} tables",
+                                serviceOwner,
+                                totalRows,
+                                tables.Count
+                            );
+                        }
+
+                        var ingestionTimestamp = _timeProvider.GetCurrentInstant();
+                        List<TelemetryEntity> telemetry = new(totalRows);
+                        foreach (var table in tables)
+                        {
+                            foreach (var row in table)
+                                telemetry.Add(row with { TimeIngested = ingestionTimestamp });
+                        }
+
+                        await _repository.InsertTelemetry(serviceOwner, query, searchTo, telemetry, cancellationToken);
+
+                        Debug.Assert(_results is not null);
+                        await _results.Writer.WriteAsync(
+                            new ServiceOwnerQueryResult(serviceOwner, query, searchFrom, searchTo, telemetry),
+                            cancellationToken
+                        );
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        _logger.LogError(ex, "[{ServiceOwner}] failed to query, trying again soon...", serviceOwner);
+                    }
+                }
+            } while (await timer.WaitForNextTickAsync(cancellationToken));
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogInformation("[{ServiceOwner}] querying thread cancelled", serviceOwner);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[{ServiceOwner}] thread failed, crashing..", serviceOwner);
+            _applicationLifetime.StopApplication();
+        }
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        if (_serviceOwnerDiscoveryThread is not null)
+            await _serviceOwnerDiscoveryThread;
+
+        foreach (var (_, thread) in _serviceOwnerThreads)
+            await thread;
+
+        if (_results is not null)
+            _results.Writer.TryComplete();
     }
 }

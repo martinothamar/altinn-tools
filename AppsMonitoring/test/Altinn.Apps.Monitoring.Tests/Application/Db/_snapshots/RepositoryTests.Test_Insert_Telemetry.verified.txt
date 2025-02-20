@@ -1,0 +1,343 @@
+﻿[
+  {
+    Desc: First write from clean DB,
+    Start: 2025-01-01T12:00:00Z,
+    End: 2025-01-01T12:10:00Z,
+    StateBefore: {
+      Telemetry: [],
+      Queries: []
+    },
+    Input: {
+      ServiceOwner: so,
+      Telemetry: [
+        {
+          ExtId: ext-id,
+          ServiceOwner: so,
+          AppName: app-name,
+          AppVersion: 8.0.0,
+          TimeGenerated: 2025-01-01T11:45:00Z,
+          TimeIngested: 2025-01-01T12:00:00Z,
+          Data: {
+            InstanceOwnerPartyId: 2,
+            InstanceId: Guid_1,
+            TraceId: trace-id,
+            SpanId: span-id,
+            ParentSpanId: parent-span-id,
+            TraceName: trace-name,
+            SpanName: span-name,
+            Success: false,
+            Result: result,
+            Duration: 0:00:00:00.1,
+            Attributes: {
+              key1: value1,
+              key2: value2
+            },
+            AltinnErrorId: 1
+          }
+        }
+      ]
+    },
+    StateAfter: {
+      Telemetry: [
+        {
+          Id: 1,
+          ExtId: ext-id,
+          ServiceOwner: so,
+          AppName: app-name,
+          AppVersion: 8.0.0,
+          TimeGenerated: 2025-01-01T11:45:00Z,
+          TimeIngested: 2025-01-01T12:00:00Z,
+          Data: {
+            InstanceOwnerPartyId: 2,
+            InstanceId: Guid_1,
+            TraceId: trace-id,
+            SpanId: span-id,
+            ParentSpanId: parent-span-id,
+            TraceName: trace-name,
+            SpanName: span-name,
+            Success: false,
+            Result: result,
+            Duration: 0:00:00:00.1,
+            Attributes: {
+              key1: value1,
+              key2: value2
+            },
+            AltinnErrorId: 1
+          }
+        }
+      ],
+      Queries: [
+        {
+          Id: 1,
+          ServiceOwner: so,
+          Name: query-name,
+          Hash: lhcdD2d5F62whymwYsw5Sw==,
+          QueriedUntil: 2025-01-01T11:45:00Z
+        }
+      ]
+    }
+  },
+  {
+    Desc: Second write with existing data (test for idempotency),
+    Start: 2025-01-01T12:10:00Z,
+    End: 2025-01-01T12:20:00Z,
+    StateBefore: {
+      Telemetry: [
+        {
+          Id: 1,
+          ExtId: ext-id,
+          ServiceOwner: so,
+          AppName: app-name,
+          AppVersion: 8.0.0,
+          TimeGenerated: 2025-01-01T11:45:00Z,
+          TimeIngested: 2025-01-01T12:00:00Z,
+          Data: {
+            InstanceOwnerPartyId: 2,
+            InstanceId: Guid_1,
+            TraceId: trace-id,
+            SpanId: span-id,
+            ParentSpanId: parent-span-id,
+            TraceName: trace-name,
+            SpanName: span-name,
+            Success: false,
+            Result: result,
+            Duration: 0:00:00:00.1,
+            Attributes: {
+              key1: value1,
+              key2: value2
+            },
+            AltinnErrorId: 1
+          }
+        }
+      ],
+      Queries: [
+        {
+          Id: 1,
+          ServiceOwner: so,
+          Name: query-name,
+          Hash: lhcdD2d5F62whymwYsw5Sw==,
+          QueriedUntil: 2025-01-01T11:45:00Z
+        }
+      ]
+    },
+    Input: {
+      ServiceOwner: so,
+      Telemetry: [
+        {
+          ExtId: ext-id,
+          ServiceOwner: so,
+          AppName: app-name,
+          AppVersion: 8.0.0,
+          TimeGenerated: 2025-01-01T11:45:00Z,
+          TimeIngested: 2025-01-01T12:10:00Z,
+          Data: {
+            InstanceOwnerPartyId: 2,
+            InstanceId: Guid_1,
+            TraceId: trace-id,
+            SpanId: span-id,
+            ParentSpanId: parent-span-id,
+            TraceName: trace-name,
+            SpanName: span-name,
+            Success: false,
+            Result: result,
+            Duration: 0:00:00:00.1,
+            Attributes: {
+              key1: value1,
+              key2: value2
+            },
+            AltinnErrorId: 1
+          }
+        }
+      ]
+    },
+    StateAfter: {
+      Telemetry: [
+        {
+          Id: 1,
+          ExtId: ext-id,
+          ServiceOwner: so,
+          AppName: app-name,
+          AppVersion: 8.0.0,
+          TimeGenerated: 2025-01-01T11:45:00Z,
+          TimeIngested: 2025-01-01T12:00:00Z,
+          DupeCount: 1,
+          Data: {
+            InstanceOwnerPartyId: 2,
+            InstanceId: Guid_1,
+            TraceId: trace-id,
+            SpanId: span-id,
+            ParentSpanId: parent-span-id,
+            TraceName: trace-name,
+            SpanName: span-name,
+            Success: false,
+            Result: result,
+            Duration: 0:00:00:00.1,
+            Attributes: {
+              key1: value1,
+              key2: value2
+            },
+            AltinnErrorId: 1
+          }
+        }
+      ],
+      Queries: [
+        {
+          Id: 1,
+          ServiceOwner: so,
+          Name: query-name,
+          Hash: lhcdD2d5F62whymwYsw5Sw==,
+          QueriedUntil: 2025-01-01T12:00:00Z
+        }
+      ]
+    }
+  },
+  {
+    Desc: Same data, different service owner (should result in write),
+    Start: 2025-01-01T12:20:00Z,
+    End: 2025-01-01T12:30:00Z,
+    StateBefore: {
+      Telemetry: [
+        {
+          Id: 1,
+          ExtId: ext-id,
+          ServiceOwner: so,
+          AppName: app-name,
+          AppVersion: 8.0.0,
+          TimeGenerated: 2025-01-01T11:45:00Z,
+          TimeIngested: 2025-01-01T12:00:00Z,
+          DupeCount: 1,
+          Data: {
+            InstanceOwnerPartyId: 2,
+            InstanceId: Guid_1,
+            TraceId: trace-id,
+            SpanId: span-id,
+            ParentSpanId: parent-span-id,
+            TraceName: trace-name,
+            SpanName: span-name,
+            Success: false,
+            Result: result,
+            Duration: 0:00:00:00.1,
+            Attributes: {
+              key1: value1,
+              key2: value2
+            },
+            AltinnErrorId: 1
+          }
+        }
+      ],
+      Queries: [
+        {
+          Id: 1,
+          ServiceOwner: so,
+          Name: query-name,
+          Hash: lhcdD2d5F62whymwYsw5Sw==,
+          QueriedUntil: 2025-01-01T12:00:00Z
+        }
+      ]
+    },
+    Input: {
+      ServiceOwner: sot,
+      Telemetry: [
+        {
+          ExtId: ext-id,
+          ServiceOwner: sot,
+          AppName: app-name,
+          AppVersion: 8.0.0,
+          TimeGenerated: 2025-01-01T11:45:00Z,
+          TimeIngested: 2025-01-01T12:20:00Z,
+          DupeCount: 1,
+          Data: {
+            InstanceOwnerPartyId: 2,
+            InstanceId: Guid_1,
+            TraceId: trace-id,
+            SpanId: span-id,
+            ParentSpanId: parent-span-id,
+            TraceName: trace-name,
+            SpanName: span-name,
+            Success: false,
+            Result: result,
+            Duration: 0:00:00:00.1,
+            Attributes: {
+              key1: value1,
+              key2: value2
+            },
+            AltinnErrorId: 1
+          }
+        }
+      ]
+    },
+    StateAfter: {
+      Telemetry: [
+        {
+          Id: 1,
+          ExtId: ext-id,
+          ServiceOwner: so,
+          AppName: app-name,
+          AppVersion: 8.0.0,
+          TimeGenerated: 2025-01-01T11:45:00Z,
+          TimeIngested: 2025-01-01T12:00:00Z,
+          DupeCount: 1,
+          Data: {
+            InstanceOwnerPartyId: 2,
+            InstanceId: Guid_1,
+            TraceId: trace-id,
+            SpanId: span-id,
+            ParentSpanId: parent-span-id,
+            TraceName: trace-name,
+            SpanName: span-name,
+            Success: false,
+            Result: result,
+            Duration: 0:00:00:00.1,
+            Attributes: {
+              key1: value1,
+              key2: value2
+            },
+            AltinnErrorId: 1
+          }
+        },
+        {
+          Id: 3,
+          ExtId: ext-id,
+          ServiceOwner: sot,
+          AppName: app-name,
+          AppVersion: 8.0.0,
+          TimeGenerated: 2025-01-01T11:45:00Z,
+          TimeIngested: 2025-01-01T12:20:00Z,
+          Data: {
+            InstanceOwnerPartyId: 2,
+            InstanceId: Guid_1,
+            TraceId: trace-id,
+            SpanId: span-id,
+            ParentSpanId: parent-span-id,
+            TraceName: trace-name,
+            SpanName: span-name,
+            Success: false,
+            Result: result,
+            Duration: 0:00:00:00.1,
+            Attributes: {
+              key1: value1,
+              key2: value2
+            },
+            AltinnErrorId: 1
+          }
+        }
+      ],
+      Queries: [
+        {
+          Id: 1,
+          ServiceOwner: so,
+          Name: query-name,
+          Hash: lhcdD2d5F62whymwYsw5Sw==,
+          QueriedUntil: 2025-01-01T12:00:00Z
+        },
+        {
+          Id: 3,
+          ServiceOwner: sot,
+          Name: query-name,
+          Hash: lhcdD2d5F62whymwYsw5Sw==,
+          QueriedUntil: 2025-01-01T11:45:00Z
+        }
+      ]
+    }
+  }
+]

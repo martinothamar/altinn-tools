@@ -1,8 +1,10 @@
 using Altinn.Apps.Monitoring.Application;
+using Altinn.Apps.Monitoring.Application.Db;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Time.Testing;
 using Testcontainers.PostgreSql;
 
 namespace Altinn.Apps.Monitoring.Tests;
@@ -11,9 +13,37 @@ internal sealed class HostFixture : WebApplicationFactory<Program>
 {
     public PostgreSqlContainer PostgreSqlContainer { get; }
 
-    private HostFixture(PostgreSqlContainer postgreSqlContainer)
+    private readonly Action<IServiceCollection>? _configureServices;
+
+    public FakeTimeProvider TimeProvider =>
+        Services.GetRequiredService<TimeProvider>() as FakeTimeProvider
+        ?? throw new InvalidOperationException("TimeProvider is not FakeTimeProvider");
+
+    public Repository Repository => Services.GetRequiredService<Repository>();
+
+    public Orchestrator Orchestrator => Services.GetRequiredService<Orchestrator>();
+
+    public IQueryLoader QueryLoader => Services.GetRequiredService<IQueryLoader>();
+
+    private HostFixture(PostgreSqlContainer postgreSqlContainer, Action<IServiceCollection>? configureServices)
     {
         PostgreSqlContainer = postgreSqlContainer;
+        _configureServices = configureServices;
+    }
+
+    public async Task<HttpClient> Start(CancellationToken cancellationToken)
+    {
+        var client = CreateClient();
+        try
+        {
+            Assert.Equal("Healthy", await client.GetStringAsync("/health", cancellationToken));
+            return client;
+        }
+        catch
+        {
+            client.Dispose();
+            throw;
+        }
     }
 
     protected override IHost CreateHost(IHostBuilder builder)
@@ -46,9 +76,10 @@ internal sealed class HostFixture : WebApplicationFactory<Program>
 
     private void ConfigureServices(IServiceCollection services)
     {
-        var descriptor = services.FirstOrDefault(d => d.ImplementationType == typeof(Orchestrator));
-        if (descriptor != null)
-            services.Remove(descriptor);
+        var timeProvider = new FakeTimeProvider(new DateTimeOffset(2025, 1, 1, 12, 0, 0, TimeSpan.Zero));
+        services.AddSingleton<TimeProvider>(timeProvider);
+
+        _configureServices?.Invoke(services);
     }
 
     private static string FindSolutionDir()
@@ -63,7 +94,7 @@ internal sealed class HostFixture : WebApplicationFactory<Program>
         throw new Exception("Solution directory not found");
     }
 
-    public static async Task<HostFixture> Create()
+    public static async Task<HostFixture> Create(Action<IServiceCollection>? configureServices = null)
     {
         var solutionDir = FindSolutionDir();
 
@@ -91,10 +122,7 @@ internal sealed class HostFixture : WebApplicationFactory<Program>
                 .Build();
             await postgreSqlContainer.StartAsync(cancellationToken);
 
-            fixture = new HostFixture(postgreSqlContainer);
-
-            using var client = fixture.CreateClient();
-            Assert.Equal("Healthy", await client.GetStringAsync("/health", cancellationToken));
+            fixture = new HostFixture(postgreSqlContainer, configureServices);
 
             return fixture;
         }
