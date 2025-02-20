@@ -6,6 +6,39 @@ namespace Altinn.Apps.Monitoring.Tests.Application.Db;
 
 public class RepositoryTests
 {
+    private static async Task<(
+        IReadOnlyList<TelemetryEntity> Telemetry,
+        IReadOnlyList<QueryStateEntity> Queries
+    )> GetState(Repository repository, CancellationToken cancellationToken)
+    {
+        var telemetry = await repository.ListTelemetry(cancellationToken: cancellationToken);
+        var queries = await repository.ListQueryStates(cancellationToken: cancellationToken);
+        return (telemetry, queries);
+    }
+
+    private static Change NewChange(
+        string desc,
+        Instant start,
+        Instant end,
+        (IReadOnlyList<TelemetryEntity> Telemetry, IReadOnlyList<QueryStateEntity> Queries) stateBefore,
+        (string ServiceOwner, IReadOnlyList<TelemetryEntity> Telemetry) inputData,
+        (IReadOnlyList<TelemetryEntity> Telemetry, IReadOnlyList<QueryStateEntity> Queries) stateAfter
+    )
+    {
+        // Reset data to make snapshots a little less noisy
+        var telemetryBefore = stateBefore.Telemetry.Select(t => t with { Data = null! }).ToArray();
+        var telemetryAfter = stateAfter.Telemetry.Select(t => t with { Data = null! }).ToArray();
+        var inputTelemetry = inputData.Telemetry.Select(t => t with { Data = null! }).ToArray();
+        return new Change(
+            desc,
+            start,
+            end,
+            new State(telemetryBefore, stateBefore.Queries),
+            new(inputData.ServiceOwner, inputTelemetry),
+            new State(telemetryAfter, stateAfter.Queries)
+        );
+    }
+
     [Fact]
     public async Task Test_Insert_Telemetry()
     {
@@ -35,26 +68,21 @@ public class RepositoryTests
             var searchFrom = start.Minus(Duration.FromMinutes(20));
             var searchTo = start.Minus(Duration.FromMinutes(10));
 
-            var telemetryBefore = await repository.ListTelemetry(cancellationToken: cancellationToken);
-            var queryStateBefore = await repository.ListQueryStates(cancellationToken: cancellationToken);
+            var (telemetryBefore, queryStateBefore) = await GetState(repository, cancellationToken);
 
             await repository.InsertTelemetry(serviceOwner, query, searchTo, telemetry, cancellationToken);
 
-            var telemetryAfter = await repository.ListTelemetry(cancellationToken: cancellationToken);
-            var queryStateAfter = await repository.ListQueryStates(cancellationToken: cancellationToken);
-
+            var (telemetryAfter, queryStateAfter) = await GetState(repository, cancellationToken);
             timeProvider.Advance(Duration.FromMinutes(10).ToTimeSpan());
-
             var end = timeProvider.GetCurrentInstant();
-
             changes.Add(
-                new(
+                NewChange(
                     "First write from clean DB",
                     start,
                     end,
-                    new State(telemetryBefore, queryStateBefore),
-                    new Input(serviceOwner.Value, telemetry),
-                    new State(telemetryAfter, queryStateAfter)
+                    (telemetryBefore, queryStateBefore),
+                    (serviceOwner.Value, telemetry),
+                    (telemetryAfter, queryStateAfter)
                 )
             );
         }
@@ -62,31 +90,25 @@ public class RepositoryTests
         {
             // Second write with existing data (test for idempotency)
             var start = timeProvider.GetCurrentInstant();
-            var telemetryBefore = await repository.ListTelemetry(cancellationToken: cancellationToken);
+            var (telemetryBefore, queryStateBefore) = await GetState(repository, cancellationToken);
             var serviceOwner = ServiceOwner.Parse(telemetryBefore[0].ServiceOwner);
             var searchFrom = start.Minus(Duration.FromMinutes(25));
             var searchTo = start.Minus(Duration.FromMinutes(10));
 
-            var queryStateBefore = await repository.ListQueryStates(cancellationToken: cancellationToken);
-
             var telemetry = telemetryBefore.Select(t => t with { Id = 0, TimeIngested = start }).ToArray();
             await repository.InsertTelemetry(serviceOwner, query, searchTo, telemetry, cancellationToken);
 
-            var telemetryAfter = await repository.ListTelemetry(cancellationToken: cancellationToken);
-            var queryStateAfter = await repository.ListQueryStates(cancellationToken: cancellationToken);
-
+            var (telemetryAfter, queryStateAfter) = await GetState(repository, cancellationToken);
             timeProvider.Advance(Duration.FromMinutes(10).ToTimeSpan());
-
             var end = timeProvider.GetCurrentInstant();
-
             changes.Add(
-                new(
+                NewChange(
                     "Second write with existing data (test for idempotency)",
                     start,
                     end,
-                    new State(telemetryBefore, queryStateBefore),
-                    new Input(serviceOwner.Value, telemetry),
-                    new State(telemetryAfter, queryStateAfter)
+                    (telemetryBefore, queryStateBefore),
+                    (serviceOwner.Value, telemetry),
+                    (telemetryAfter, queryStateAfter)
                 )
             );
         }
@@ -94,33 +116,27 @@ public class RepositoryTests
         {
             // Same data, different service owner
             var start = timeProvider.GetCurrentInstant();
-            var telemetryBefore = await repository.ListTelemetry(cancellationToken: cancellationToken);
+            var (telemetryBefore, queryStateBefore) = await GetState(repository, cancellationToken);
             var serviceOwner = ServiceOwner.Parse("sot");
             var searchFrom = start.Minus(Duration.FromMinutes(30));
             var searchTo = start.Minus(Duration.FromMinutes(10));
-
-            var queryStateBefore = await repository.ListQueryStates(cancellationToken: cancellationToken);
 
             var telemetry = telemetryBefore
                 .Select(t => t with { Id = 0, TimeIngested = start, ServiceOwner = serviceOwner.Value })
                 .ToArray();
             await repository.InsertTelemetry(serviceOwner, query, searchTo, telemetry, cancellationToken);
 
-            var telemetryAfter = await repository.ListTelemetry(cancellationToken: cancellationToken);
-            var queryStateAfter = await repository.ListQueryStates(cancellationToken: cancellationToken);
-
+            var (telemetryAfter, queryStateAfter) = await GetState(repository, cancellationToken);
             timeProvider.Advance(Duration.FromMinutes(10).ToTimeSpan());
-
             var end = timeProvider.GetCurrentInstant();
-
             changes.Add(
-                new(
-                    "Same data, different service owner (should result in write)",
+                NewChange(
+                    "Same data, different service owner, expecting write",
                     start,
                     end,
-                    new State(telemetryBefore, queryStateBefore),
-                    new Input(serviceOwner.Value, telemetry),
-                    new State(telemetryAfter, queryStateAfter)
+                    (telemetryBefore, queryStateBefore),
+                    (serviceOwner.Value, telemetry),
+                    (telemetryAfter, queryStateAfter)
                 )
             );
         }
