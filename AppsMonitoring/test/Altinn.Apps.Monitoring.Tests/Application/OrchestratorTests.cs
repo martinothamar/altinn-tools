@@ -3,16 +3,19 @@ using Altinn.Apps.Monitoring.Application.Db;
 using Altinn.Apps.Monitoring.Domain;
 using Altinn.Apps.Monitoring.Tests.Application.Db;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Time.Testing;
+using NodaTime.Text;
 
 namespace Altinn.Apps.Monitoring.Tests.Application;
 
 public class OrchestratorTests
 {
-    public sealed record FakeConfig(
-        TimeSpan Latency,
-        Func<IServiceProvider, IReadOnlyList<ServiceOwner>>? ServiceOwnersDiscovery = null,
-        Func<IServiceProvider, TelemetryEntity[]>? TelemetryGenerator = null
-    );
+    public sealed record FakeConfig
+    {
+        public TimeSpan Latency { get; set; }
+        public Func<IServiceProvider, IReadOnlyList<ServiceOwner>>? ServiceOwnersDiscovery { get; set; }
+        public Func<IServiceProvider, TelemetryEntity[]>? TelemetryGenerator { get; set; }
+    }
 
     private static async Task<(
         HostFixture Fixture,
@@ -21,10 +24,7 @@ public class OrchestratorTests
         TimeSpan Latency,
         IReadOnlyList<Query> Queries,
         CancellationToken CancellationToken
-    )> CreateFixture(
-        Func<IServiceProvider, IReadOnlyList<ServiceOwner>>? serviceOwnersDiscovery = null,
-        Func<IServiceProvider, TelemetryEntity[]>? telemetryGenerator = null
-    )
+    )> CreateFixture(Action<IServiceCollection> configureServices)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
 
@@ -33,7 +33,7 @@ public class OrchestratorTests
         var latency = TimeSpan.FromSeconds(5);
         var fixture = await HostFixture.Create(services =>
         {
-            services.AddSingleton<FakeConfig>(_ => new(latency, serviceOwnersDiscovery, telemetryGenerator));
+            services.Configure<FakeConfig>(config => config.Latency = latency);
             services.AddSingleton<IServiceOwnerDiscovery, FakeServiceOwnerDiscovery>();
             services.AddSingleton<IQueryLoader, FakeQueryLoader>();
             services.AddSingleton<FakeTelemetryAdapter>();
@@ -47,6 +47,8 @@ public class OrchestratorTests
                 options.OrchestratorStartSignal = startSignal;
                 options.PollInterval = pollInterval;
             });
+
+            configureServices(services);
         });
 
         using var _ = await fixture.Start(cancellationToken);
@@ -100,9 +102,14 @@ public class OrchestratorTests
     [Fact]
     public async Task Test_Query_Progression_No_Items()
     {
-        var (fixture, startSignal, pollInterval, latency, queries, cancellationToken) = await CreateFixture(
-            serviceOwnersDiscovery: _ => [ServiceOwner.Parse("one"), ServiceOwner.Parse("two")]
-        );
+        ServiceOwner[] serviceOwners = [ServiceOwner.Parse("one")];
+        var (fixture, startSignal, pollInterval, latency, queries, cancellationToken) = await CreateFixture(services =>
+        {
+            services.Configure<FakeConfig>(config =>
+            {
+                config.ServiceOwnersDiscovery = _ => serviceOwners;
+            });
+        });
 
         var timeProvider = fixture.TimeProvider;
         var repository = fixture.Repository;
@@ -111,7 +118,7 @@ public class OrchestratorTests
         var changes = new List<Change>();
         IReadOnlyList<TelemetryEntity> telemetryAfter;
         IReadOnlyList<QueryStateEntity> queryStateAfter;
-        var total = queries.Count * 2; // Two service owners
+        var total = queries.Count * serviceOwners.Length;
         {
             // Initial loop iterations (discovery and querying)
             var start = timeProvider.GetCurrentInstant();
@@ -177,42 +184,46 @@ public class OrchestratorTests
     [Fact]
     public async Task Test_Query_Progression_With_Items()
     {
-        var (fixture, startSignal, pollInterval, latency, queries, cancellationToken) = await CreateFixture(
-            serviceOwnersDiscovery: _ => [ServiceOwner.Parse("one")],
-            telemetryGenerator: (sp) =>
+        ServiceOwner[] serviceOwners = [ServiceOwner.Parse("one")];
+        var (fixture, startSignal, pollInterval, latency, queries, cancellationToken) = await CreateFixture(services =>
+            services.Configure<FakeConfig>(config =>
             {
-                var timeProvider = sp.GetRequiredService<TimeProvider>();
-                var options = sp.GetRequiredService<IOptions<AppConfiguration>>().Value;
-                long id = 0;
-                var shouldStartFromExclusive = timeProvider
-                    .GetCurrentInstant()
-                    .Minus(Duration.FromDays(options.SearchFromDays));
-                var shouldEndAtInclusive = timeProvider.GetCurrentInstant().Minus(Duration.FromMinutes(10));
+                config.ServiceOwnersDiscovery = _ => serviceOwners;
+                config.TelemetryGenerator = sp =>
+                {
+                    var timeProvider = sp.GetRequiredService<TimeProvider>();
+                    var options = sp.GetRequiredService<IOptions<AppConfiguration>>().Value;
+                    long id = 0;
+                    var shouldStartFromExclusive = timeProvider
+                        .GetCurrentInstant()
+                        .Minus(Duration.FromDays(options.SearchFromDays));
+                    var shouldEndAtInclusive = timeProvider.GetCurrentInstant().Minus(Duration.FromMinutes(10));
 
-                TelemetryEntity GenerateTrace(string serviceOwner, Instant timeGenerated) =>
-                    TestData.GenerateTelemetryEntity(
-                        extId: $"{id++}",
-                        serviceOwner: serviceOwner,
-                        timeGenerated: timeGenerated,
-                        timeIngested: Instant.MinValue,
-                        dataGenerator: () => TestData.GenerateTelemetryTraceData(),
-                        timeProvider: timeProvider
-                    );
+                    TelemetryEntity GenerateTrace(ServiceOwner serviceOwner, Instant timeGenerated) =>
+                        TestData.GenerateTelemetryEntity(
+                            extId: $"{id++}",
+                            serviceOwner: serviceOwner.Value,
+                            timeGenerated: timeGenerated,
+                            timeIngested: Instant.MinValue,
+                            dataGenerator: () => TestData.GenerateTelemetryTraceData(),
+                            timeProvider: timeProvider
+                        );
 
-                var secondIterationStartExclusive = shouldEndAtInclusive;
-                var secondIterationEndInclusive = secondIterationStartExclusive.Plus(Duration.FromMinutes(10));
+                    var secondIterationStartExclusive = shouldEndAtInclusive;
+                    var secondIterationEndInclusive = secondIterationStartExclusive.Plus(Duration.FromMinutes(10));
 
-                return
-                [
-                    GenerateTrace("one", shouldStartFromExclusive.Minus(Duration.FromSeconds(1))), // This should be outside range
-                    // 1. Results for the first iteration of queries for "one"
-                    GenerateTrace("one", shouldStartFromExclusive), // This should be just within range
-                    GenerateTrace("one", shouldEndAtInclusive), // We should include now - 10 minuts
-                    // 2. Results for the second iteration of queries for "one"
-                    GenerateTrace("one", secondIterationStartExclusive.Plus(Duration.FromSeconds(1))), // This should be outside range for first iteration, but included in the second
-                    GenerateTrace("one", secondIterationEndInclusive), // This should be just within range
-                ];
-            }
+                    return
+                    [
+                        GenerateTrace(serviceOwners[0], shouldStartFromExclusive.Minus(Duration.FromSeconds(1))), // This should be outside range
+                        // 1. Results for the first iteration of queries for "one"
+                        GenerateTrace(serviceOwners[0], shouldStartFromExclusive), // This should be just within range
+                        GenerateTrace(serviceOwners[0], shouldEndAtInclusive), // We should include now - 10 minuts
+                        // 2. Results for the second iteration of queries for "one"
+                        GenerateTrace(serviceOwners[0], secondIterationStartExclusive.Plus(Duration.FromSeconds(1))), // This should be outside range for first iteration, but included in the second
+                        GenerateTrace(serviceOwners[0], secondIterationEndInclusive), // This should be just within range
+                    ];
+                };
+            })
         );
         var timeProvider = fixture.TimeProvider;
         var repository = fixture.Repository;
@@ -221,7 +232,7 @@ public class OrchestratorTests
         var changes = new List<Change>();
         IReadOnlyList<TelemetryEntity> telemetryAfter;
         IReadOnlyList<QueryStateEntity> queryStateAfter;
-        var total = queries.Count; // One service owners
+        var total = queries.Count * serviceOwners.Length;
         {
             // Initial loop iterations (discovery and querying)
             var start = timeProvider.GetCurrentInstant();
@@ -284,6 +295,125 @@ public class OrchestratorTests
         await Verify(changes).AutoVerify().DontScrubDateTimes().DontIgnoreEmptyCollections();
     }
 
+    [Fact]
+    public async Task Test_Querying_After_Seeding()
+    {
+        ServiceOwner[] serviceOwners = [ServiceOwner.Parse("skd")];
+        var (fixture, startSignal, pollInterval, latency, queries, cancellationToken) = await CreateFixture(services =>
+        {
+            var timeProvider = new FakeTimeProvider(Instant.FromUtc(2025, 2, 20, 12, 0, 0).ToDateTimeOffset());
+            services.AddSingleton<TimeProvider>(timeProvider);
+            services.Configure<AppConfiguration>(config =>
+            {
+                config.DisableSeeder = false;
+                config.SeedSqliteDbPath = Path.Combine("data", "mini.db");
+            });
+            services.Configure<FakeConfig>(config =>
+            {
+                config.ServiceOwnersDiscovery = _ => serviceOwners;
+                config.TelemetryGenerator = (sp) =>
+                {
+                    var timeProvider = sp.GetRequiredService<TimeProvider>();
+                    var options = sp.GetRequiredService<IOptions<AppConfiguration>>().Value;
+                    long id = 1;
+
+                    TelemetryEntity GenerateTrace(ServiceOwner serviceOwner, Instant timeGenerated)
+                    {
+                        var spanId = $"90c159bde9b1a6c{id++}";
+                        return TestData.GenerateTelemetryEntity(
+                            extId: $"75563ff0b3251e04c70362c5a3495174-{spanId}", // Matches Azure adapter
+                            serviceOwner: serviceOwner.Value,
+                            appName: "formueinntekt-skattemelding-v2",
+                            appVersion: "8.0.8",
+                            timeGenerated: timeGenerated,
+                            timeIngested: Instant.MinValue,
+                            dupeCount: 0,
+                            seeded: false,
+                            dataGenerator: () =>
+                                TestData.GenerateTelemetryTraceData(
+                                    altinnErrorId: 1,
+                                    instanceOwnerPartyId: 123,
+                                    instanceId: Guid.Parse("1d449be1-7114-405c-aeee-1f09799f7b74"),
+                                    traceId: "75563ff0b3251e04c70362c5a3495174",
+                                    spanId: spanId,
+                                    parentSpanId: "7e7143a41c29e532",
+                                    traceName: "PUT Process/NextElement [app/instanceGuid/instanceOwnerPartyId/org]",
+                                    spanName: "POST /storage/api/v1/instances/123/1d449be1-7114-405c-aeee-1f09799f7b74/events",
+                                    success: false,
+                                    result: "Faulted",
+                                    duration: DurationPattern.Roundtrip.Parse("0:00:00:27.478494").Value,
+                                    attributes: new()
+                                    {
+                                        ["Data"] =
+                                            "https://platform.altinn.no/storage/api/v1/instances/123/1d449be1-7114-405c-aeee-1f09799f7b74/events",
+                                        ["DependencyType"] = "HTTP",
+                                        ["PerformanceBucket"] = "15sec-30sec",
+                                        ["Properties"] =
+                                            """{"AspNetCoreEnvironment":"Production","_MS.ProcessedByMetricExtractors":"(Name:'Dependencies', Ver:'1.1')"}""",
+                                        ["Target"] = "platform.altinn.no",
+                                    }
+                                ),
+                            timeProvider: timeProvider
+                        );
+                    }
+                    return
+                    [
+                        GenerateTrace(
+                            serviceOwners[0],
+                            InstantPattern.ExtendedIso.Parse("2025-02-15T14:51:04.906736Z").Value
+                        ), // Should match a record from the seed DB
+                        GenerateTrace(
+                            serviceOwners[0],
+                            InstantPattern.ExtendedIso.Parse("2025-02-15T14:56:04.906736Z").Value
+                        ), // Different span ID, should not dedupe
+                    ];
+                };
+            });
+        });
+        var timeProvider = fixture.TimeProvider;
+        var repository = fixture.Repository;
+        var results = fixture.Orchestrator.Results;
+        var seeder = fixture.Seeder;
+
+        await seeder.Completion;
+
+        var changes = new List<Change>();
+        IReadOnlyList<TelemetryEntity> telemetryAfter;
+        IReadOnlyList<QueryStateEntity> queryStateAfter;
+        var total = queries.Count * serviceOwners.Length;
+        {
+            // Initial loop iterations (discovery and querying)
+            var start = timeProvider.GetCurrentInstant();
+            var (telemetryBefore, queryStateBefore) = await GetState(repository, cancellationToken);
+            startSignal.SetResult();
+
+            await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken); // Let all threads reach query delay
+            timeProvider.Advance(latency * queries.Count); // Let adapters progress
+
+            List<ServiceOwnerQueryResult> queryResults = new();
+            for (int i = 0; i < total; i++)
+            {
+                var result = await results.ReadAsync(cancellationToken);
+                queryResults.Add(result);
+            }
+
+            (telemetryAfter, queryStateAfter) = await GetState(repository, cancellationToken);
+            var end = timeProvider.GetCurrentInstant();
+            changes.Add(
+                NewChange(
+                    "Iteration 1 - dupe += 1",
+                    start,
+                    end,
+                    (telemetryBefore, queryStateBefore),
+                    queryResults,
+                    (telemetryAfter, queryStateAfter)
+                )
+            );
+        }
+
+        await Verify(changes).AutoVerify().DontScrubDateTimes().DontIgnoreEmptyCollections();
+    }
+
     private sealed record Change(
         string Desc,
         Instant Start,
@@ -297,10 +427,10 @@ public class OrchestratorTests
 
     private sealed record Input(IReadOnlyList<ServiceOwnerQueryResult> ReportedResults);
 
-    private sealed class FakeServiceOwnerDiscovery(FakeConfig config, IServiceProvider serviceProvider)
+    private sealed class FakeServiceOwnerDiscovery(IOptions<FakeConfig> config, IServiceProvider serviceProvider)
         : IServiceOwnerDiscovery
     {
-        private readonly FakeConfig _config = config;
+        private readonly FakeConfig _config = config.Value;
         private readonly IServiceProvider _serviceProvider = serviceProvider;
 
         public ValueTask<IReadOnlyList<ServiceOwner>> Discover(CancellationToken cancellationToken)
@@ -328,13 +458,17 @@ public class OrchestratorTests
         private readonly TimeSpan _latency;
         private readonly TimeProvider _timeProvider;
 
-        public FakeTelemetryAdapter(IServiceProvider serviceProvider, TimeProvider timeProvider, FakeConfig fakeConfig)
+        public FakeTelemetryAdapter(
+            IServiceProvider serviceProvider,
+            TimeProvider timeProvider,
+            IOptions<FakeConfig> fakeConfig
+        )
         {
-            _latency = fakeConfig.Latency;
+            _latency = fakeConfig.Value.Latency;
             _timeProvider = timeProvider;
 
-            _telemetry = fakeConfig.TelemetryGenerator is not null
-                ? fakeConfig.TelemetryGenerator(serviceProvider)
+            _telemetry = fakeConfig.Value.TelemetryGenerator is not null
+                ? fakeConfig.Value.TelemetryGenerator(serviceProvider)
                 : [];
         }
 

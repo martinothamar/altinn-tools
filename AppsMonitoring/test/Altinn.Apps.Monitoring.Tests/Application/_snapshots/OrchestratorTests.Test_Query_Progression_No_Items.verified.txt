@@ -11,19 +11,6 @@
       ReportedResults: [
         {
           ServiceOwner: {
-            Value: two
-          },
-          Query: {
-            Name: query,
-            QueryTemplate: template-{searchFrom}-{searchTo},
-            Hash: HpynynzeF9Pk52Vahp477Q==
-          },
-          SearchFrom: 2024-10-03T11:59:59Z,
-          SearchTo: 2025-01-01T11:50:00Z,
-          Telemetry: []
-        },
-        {
-          ServiceOwner: {
             Value: one
           },
           Query: {
@@ -42,13 +29,6 @@
       Queries: [
         {
           Id: 1,
-          ServiceOwner: two,
-          Name: query,
-          Hash: HpynynzeF9Pk52Vahp477Q==,
-          QueriedUntil: 2025-01-01T11:50:00Z
-        },
-        {
-          Id: 2,
           ServiceOwner: one,
           Name: query,
           Hash: HpynynzeF9Pk52Vahp477Q==,
@@ -66,13 +46,6 @@
       Queries: [
         {
           Id: 1,
-          ServiceOwner: two,
-          Name: query,
-          Hash: HpynynzeF9Pk52Vahp477Q==,
-          QueriedUntil: 2025-01-01T11:50:00Z
-        },
-        {
-          Id: 2,
           ServiceOwner: one,
           Name: query,
           Hash: HpynynzeF9Pk52Vahp477Q==,
@@ -94,19 +67,6 @@
           SearchFrom: 2025-01-01T11:50:00Z,
           SearchTo: 2025-01-01T12:00:00Z,
           Telemetry: []
-        },
-        {
-          ServiceOwner: {
-            Value: two
-          },
-          Query: {
-            Name: query,
-            QueryTemplate: template-{searchFrom}-{searchTo},
-            Hash: HpynynzeF9Pk52Vahp477Q==
-          },
-          SearchFrom: 2025-01-01T11:50:00Z,
-          SearchTo: 2025-01-01T12:00:00Z,
-          Telemetry: []
         }
       ]
     },
@@ -115,13 +75,6 @@
       Queries: [
         {
           Id: 1,
-          ServiceOwner: two,
-          Name: query,
-          Hash: HpynynzeF9Pk52Vahp477Q==,
-          QueriedUntil: 2025-01-01T12:00:00Z
-        },
-        {
-          Id: 2,
           ServiceOwner: one,
           Name: query,
           Hash: HpynynzeF9Pk52Vahp477Q==,

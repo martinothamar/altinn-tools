@@ -39,8 +39,12 @@ internal static class TestData
     public static TelemetryEntity GenerateTelemetryEntity(
         string? extId = null,
         string? serviceOwner = null,
+        string? appName = null,
+        string? appVersion = null,
         Instant? timeGenerated = null,
         Instant? timeIngested = null,
+        int? dupeCount = null,
+        bool? seeded = null,
         Func<TelemetryData>? dataGenerator = null,
         TimeProvider? timeProvider = null
     )
@@ -52,12 +56,12 @@ internal static class TestData
             Id = 0,
             ExtId = extId ?? "ext-id",
             ServiceOwner = serviceOwner ?? "so",
-            AppName = "app-name",
-            AppVersion = "8.0.0",
+            AppName = appName ?? "app-name",
+            AppVersion = appVersion ?? "8.0.0",
             TimeGenerated = timeGenerated ?? timeProvider.GetCurrentInstant().Minus(Duration.FromMinutes(15)),
             TimeIngested = timeIngested ?? timeProvider.GetCurrentInstant(),
-            DupeCount = 0,
-            Seeded = false,
+            DupeCount = dupeCount ?? 0,
+            Seeded = seeded ?? false,
             Data = dataGenerator?.Invoke() ?? GenerateTelemetryTraceData(),
         };
     }
