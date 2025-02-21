@@ -1,4 +1,6 @@
 using Altinn.Apps.Monitoring.Application.Db;
+using Altinn.Apps.Monitoring.Domain;
+using NodaTime.Text;
 
 namespace Altinn.Apps.Monitoring.Tests.Application.Db;
 
@@ -64,5 +66,50 @@ internal static class TestData
             Seeded = seeded ?? false,
             Data = dataGenerator?.Invoke() ?? GenerateTelemetryTraceData(),
         };
+    }
+
+    public static TelemetryEntity GenerateMiniDbTrace(
+        ServiceOwner serviceOwner,
+        ref long id,
+        Instant timeGenerated,
+        TimeProvider timeProvider
+    )
+    {
+        var spanId = $"90c159bde9b1a6c{id++}";
+        return TestData.GenerateTelemetryEntity(
+            extId: $"75563ff0b3251e04c70362c5a3495174-{spanId}", // Matches Azure adapter
+            serviceOwner: serviceOwner.Value,
+            appName: "formueinntekt-skattemelding-v2",
+            appVersion: "8.0.8",
+            timeGenerated: timeGenerated,
+            timeIngested: Instant.MinValue,
+            dupeCount: 0,
+            seeded: false,
+            dataGenerator: () =>
+                TestData.GenerateTelemetryTraceData(
+                    altinnErrorId: 1,
+                    instanceOwnerPartyId: 123,
+                    instanceId: Guid.Parse("1d449be1-7114-405c-aeee-1f09799f7b74"),
+                    traceId: "75563ff0b3251e04c70362c5a3495174",
+                    spanId: spanId,
+                    parentSpanId: "7e7143a41c29e532",
+                    traceName: "PUT Process/NextElement [app/instanceGuid/instanceOwnerPartyId/org]",
+                    spanName: "POST /storage/api/v1/instances/123/1d449be1-7114-405c-aeee-1f09799f7b74/events",
+                    success: false,
+                    result: "Faulted",
+                    duration: DurationPattern.Roundtrip.Parse("0:00:00:27.478494").Value,
+                    attributes: new()
+                    {
+                        ["Data"] =
+                            "https://platform.altinn.no/storage/api/v1/instances/123/1d449be1-7114-405c-aeee-1f09799f7b74/events",
+                        ["DependencyType"] = "HTTP",
+                        ["PerformanceBucket"] = "15sec-30sec",
+                        ["Properties"] =
+                            """{"AspNetCoreEnvironment":"Production","_MS.ProcessedByMetricExtractors":"(Name:'Dependencies', Ver:'1.1')"}""",
+                        ["Target"] = "platform.altinn.no",
+                    }
+                ),
+            timeProvider: timeProvider
+        );
     }
 }

@@ -27,6 +27,8 @@ internal sealed class HostFixture : WebApplicationFactory<Program>
 
     public Orchestrator Orchestrator => Services.GetRequiredService<Orchestrator>();
 
+    public IAlerter Alerter => Services.GetRequiredService<IAlerter>();
+
     public IQueryLoader QueryLoader => Services.GetRequiredService<IQueryLoader>();
 
     private HostFixture(

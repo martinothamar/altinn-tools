@@ -25,7 +25,7 @@ internal sealed class Orchestrator(
     IQueryLoader queryLoader,
     TimeProvider timeProvider,
     DistributedLocking locking
-) : IHostedService
+) : IHostedService, IDisposable
 {
     private readonly ILogger<Orchestrator> _logger = logger;
     private readonly IOptionsMonitor<AppConfiguration> _appConfiguration = appConfiguration;
@@ -241,5 +241,10 @@ internal sealed class Orchestrator(
 
         if (_results is not null)
             _results.Writer.TryComplete();
+    }
+
+    public void Dispose()
+    {
+        _cancellationTokenSource?.Dispose();
     }
 }

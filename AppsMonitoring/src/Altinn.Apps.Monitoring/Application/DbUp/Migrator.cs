@@ -86,16 +86,11 @@ internal sealed class Script0001Initial : IScript
                     UNIQUE (service_owner, hash)
                 );
 
-                CREATE TABLE monitoring.telemetry_subscriptions (
-                    subscriber TEXT NOT PRIMARY KEY,
-                    offset BIGSERIAL NOT NULL
-                );
-
                 CREATE TABLE monitoring.alerts (
                     id BIGSERIAL PRIMARY KEY,
-                    state TEXT NOT NULL,
+                    state INTEGER NOT NULL,
                     telemetry_id BIGSERIAL NOT NULL REFERENCES monitoring.telemetry (id),
-                    ext_id TEXT,
+                    data JSONB NOT NULL,
                     UNIQUE (telemetry_id)
                 );
             """;

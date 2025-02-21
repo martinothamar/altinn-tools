@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading.Channels;
 using Altinn.Apps.Monitoring.Application.Db;
 using Microsoft.Extensions.Http.Resilience;
 using Microsoft.Extensions.Options;
@@ -14,7 +16,7 @@ internal sealed class SlackAlerter(
     TimeProvider timeProvider,
     DistributedLocking locking,
     Repository repository
-) : IAlerter
+) : IAlerter, IDisposable
 {
     private readonly HttpClient _httpClient = new HttpClient(
         new ResilienceHandler(
@@ -36,11 +38,25 @@ internal sealed class SlackAlerter(
     private readonly DistributedLocking _locking = locking;
     private readonly Repository _repository = repository;
 
+    private Channel<AlerterEvent>? _results;
+
+    public ChannelReader<AlerterEvent> Results =>
+        _results?.Reader ?? throw new InvalidOperationException("Not started");
+
     private CancellationTokenSource? _cancellationTokenSource;
     private Task? _thread;
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
+        _results = Channel.CreateBounded<AlerterEvent>(
+            new BoundedChannelOptions(128)
+            {
+                FullMode = BoundedChannelFullMode.DropOldest,
+                SingleReader = false,
+                SingleWriter = true,
+            }
+        );
+
         var config = _config.CurrentValue;
         if (config.DisableAlerter)
         {
@@ -79,42 +95,66 @@ internal sealed class SlackAlerter(
                 });
             }
 
-            using var timer = new PeriodicTimer(config.PollInterval, _timeProvider);
+            using var timer = new PeriodicTimer(config.PollInterval / 2, _timeProvider);
 
-            const Subscriber subscriber = Subscriber.Alerter;
             do
             {
-                // TODO: we need a better method to reflect the "inbox" for this service
-                // We want
-                // * Telemetry items that don't have alerts
-                // * Telemetry items that have alerts that are < Mitigated
-                // * Alerts that are not mitigated
-                var telemetry = await _repository.ListTelemetryFromSubscription(subscriber, cancellationToken);
-                if (telemetry.Count == 0)
+                var workItems = await _repository.ListAlerterWorkItems(AlertData.Types.Slack, cancellationToken);
+                if (workItems.Length == 0)
                     continue;
 
-                var alerts = await _repository.ListAlerts(telemetry.Select(t => t.Id).ToArray(), cancellationToken);
-                var alertsByTelemetryId = alerts.ToDictionary(a => a.TelemetryId);
+                Debug.Assert(_results is not null);
 
-                foreach (var item in telemetry)
+                for (int i = 0; i < workItems.Length; i++)
                 {
-                    if (!alertsByTelemetryId.TryGetValue(item.Id, out var alert))
+                    var (item, alert) = workItems[i];
+                    try
                     {
-                        alert = new AlertEntity
+                        if (alert is null)
                         {
-                            Id = 0,
-                            State = AlertState.Pending,
-                            TelemetryId = item.Id,
-                            ExtId = null,
-                        };
-                    }
+                            alert = new AlertEntity
+                            {
+                                Id = 0,
+                                State = AlertState.Pending,
+                                TelemetryId = item.Id,
+                                Data = new SlackAlertData
+                                {
+                                    Channel = null,
+                                    Message = null,
+                                    ThreadTs = null,
+                                },
+                            };
+                            workItems[i] = (item, alert);
+                        }
 
-                    while (alert.State < AlertState.Mitigated)
+                        while (alert.State < AlertState.Mitigated)
+                        {
+                            var updatedAlert = await ProgressAlert(item, alert, cancellationToken);
+                            if (updatedAlert is null)
+                                break; // Try again later
+                            await _repository.SaveAlert(updatedAlert, cancellationToken);
+
+                            await _results.Writer.WriteAsync(
+                                new AlerterEvent
+                                {
+                                    Item = item,
+                                    AlertBefore = alert,
+                                    AlertAfter = updatedAlert,
+                                },
+                                cancellationToken
+                            );
+                            alert = updatedAlert;
+                            workItems[i] = (item, alert);
+                        }
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
                     {
-                        var updatedAlert = await Alert(item, alert, cancellationToken);
-                        if (updatedAlert is null)
-                            break; // Try again later
-                        await _repository.SaveAlert(updatedAlert, cancellationToken);
+                        _logger.LogError(
+                            ex,
+                            "Failed to process alerter work item, TelemetryId='{TelemetryId}', AlertId='{}'",
+                            item.Id,
+                            alert?.Id
+                        );
                     }
                 }
             } while (await timer.WaitForNextTickAsync(cancellationToken));
@@ -130,61 +170,21 @@ internal sealed class SlackAlerter(
         }
     }
 
-    private async Task<AlertEntity?> Alert(TelemetryEntity item, AlertEntity alert, CancellationToken cancellationToken)
+    private async Task<AlertEntity?> ProgressAlert(
+        TelemetryEntity item,
+        AlertEntity alert,
+        CancellationToken cancellationToken
+    )
     {
+        if (alert.Data is not SlackAlertData)
+            throw new InvalidOperationException("Unexpected alert data type: " + alert.Data?.GetType());
         switch (alert.State)
         {
             case AlertState.Pending:
-            {
-                switch (item.Data)
-                {
-                    case TraceData data:
-                    {
-                        var text = $"""
-                            *ALERT* `{item.TimeGenerated}`:
-                            - App: *{item.ServiceOwner}*/*{item.AppName}*/*{item.AppVersion}*
-                            - Feil: *{data.SpanName}* (status *{data.Result}*, *{data.Duration.TotalMilliseconds:0.00}ms*)
-                            - Instansen: *{data.InstanceOwnerPartyId}*/*{data.InstanceId}*
-                            - Operation ID: *{data.TraceId}*
-                            """;
-                        using var response = await _httpClient.PostAsJsonAsync(
-                            "/api/chat.postMessage",
-                            new
-                            {
-                                channel = _config.CurrentValue.SlackChannel,
-                                text = text,
-                                mrkdwn = true,
-                                // thread_ts
-                            },
-                            cancellationToken
-                        );
-
-                        var slackResponse = await response.Content.ReadFromJsonAsync<SlackResponse>(cancellationToken);
-
-                        if (slackResponse is SlackErrorResponse error)
-                        {
-                            _logger.LogError("Failed to send alert to Slack: {Error}", error.Error);
-                            return null;
-                        }
-                        else if (slackResponse is SlackOkResponse ok)
-                        {
-                            _logger.LogInformation(
-                                "Alert sent to Slack: '{Ts}' for telemetry ID '{TelemetryId}'",
-                                ok.Ts,
-                                item.Id
-                            );
-                            return alert with { State = AlertState.Alerted, ExtId = ok.Ts };
-                        }
-                        else
-                            throw new InvalidOperationException($"Unknown Slack response: {slackResponse}");
-                    }
-                    default:
-                        throw new InvalidOperationException($"Unknown telemetry data: {item.Data}");
-                }
-            }
+                return await HandlePendingAlert(item, alert, cancellationToken);
             case AlertState.Alerted:
             {
-                if (alert.ExtId is null)
+                if (alert.Data is null)
                     throw new InvalidOperationException("Missing Slack thread timestamp");
                 // TODO: mitigate
                 return null;
@@ -196,9 +196,92 @@ internal sealed class SlackAlerter(
         }
     }
 
-    public Task StopAsync(CancellationToken cancellationToken)
+    private async Task<AlertEntity?> HandlePendingAlert(
+        TelemetryEntity item,
+        AlertEntity alert,
+        CancellationToken cancellationToken
+    )
     {
-        return _thread ?? Task.CompletedTask;
+        if (alert.Data is not SlackAlertData alertData)
+            throw new InvalidOperationException("Unexpected alert data type: " + alert.Data?.GetType());
+        if (alertData.ThreadTs is not null)
+            throw new InvalidOperationException(
+                "Unexpected Slack thread timestamp - we should not have pending alerts with a thread timestamp"
+            );
+
+        switch (item.Data)
+        {
+            case TraceData data:
+            {
+                var text = $"""
+                    *ALERT* `{item.TimeGenerated}`:
+                    - App: *{item.ServiceOwner}*/*{item.AppName}*/*{item.AppVersion}*
+                    - Feil: *{data.SpanName}* (status *{data.Result}*, *{data.Duration.TotalMilliseconds:0.00}ms*)
+                    - Instansen: *{data.InstanceOwnerPartyId}*/*{data.InstanceId}*
+                    - Operation ID: *{data.TraceId}*
+                    """;
+                var channel = _config.CurrentValue.SlackChannel;
+                using var response = await _httpClient.PostAsJsonAsync(
+                    "/api/chat.postMessage",
+                    new
+                    {
+                        channel = _config.CurrentValue.SlackChannel,
+                        text = text,
+                        mrkdwn = true,
+                        // thread_ts - we will use this to update the Slack alert when mitigations have been made (not here though)
+                    },
+                    cancellationToken
+                );
+
+                var slackResponse = await response.Content.ReadFromJsonAsync<SlackResponse>(cancellationToken);
+
+                if (slackResponse is SlackErrorResponse error)
+                {
+                    _logger.LogError("Failed to send alert to Slack: {Error}", error.Error);
+                    return null;
+                }
+                else if (slackResponse is SlackOkResponse ok)
+                {
+                    _logger.LogInformation(
+                        "Alert sent to Slack: '{Ts}' for telemetry ID '{TelemetryId}'",
+                        ok.Ts,
+                        item.Id
+                    );
+                    return alert with
+                    {
+                        State = AlertState.Alerted,
+                        Data = alertData with { Message = text, Channel = channel, ThreadTs = ok.Ts },
+                    };
+                }
+                else
+                    throw new InvalidOperationException($"Unknown Slack response: {slackResponse}");
+            }
+            default:
+                throw new InvalidOperationException($"Unknown telemetry data: {item.Data}");
+        }
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        if (_thread is not null)
+            await _thread;
+
+        if (_results is not null)
+            _results.Writer.TryComplete();
+    }
+
+    public void Dispose()
+    {
+        _cancellationTokenSource?.Dispose();
+    }
+
+    internal sealed record SlackAlertData : AlertData
+    {
+        public required string? Channel { get; init; }
+
+        public required string? Message { get; init; }
+
+        public required string? ThreadTs { get; init; }
     }
 
     [JsonConverter(typeof(SlackResponseJsonConverter))]
