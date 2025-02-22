@@ -20,7 +20,7 @@ public class OrchestratorTests
         return (telemetry, queries);
     }
 
-    public enum TelemetryGenerator
+    internal enum TelemetryGenerator
     {
         Empty,
         Multiple,
@@ -99,7 +99,7 @@ public class OrchestratorTests
     [InlineData("one", TelemetryGenerator.Empty)]
     [InlineData("one", TelemetryGenerator.Multiple)]
     [InlineData("skd", TelemetryGenerator.WithSeeder)]
-    public async Task Orchestration_Progresses_Successfully(string serviceOwner, TelemetryGenerator generator)
+    internal async Task Orchestration_Progresses_Successfully(string serviceOwner, TelemetryGenerator generator)
     {
         ServiceOwner[] serviceOwners = [ServiceOwner.Parse(serviceOwner)];
         await using var fixture = await OrchestratorFixture.Create(

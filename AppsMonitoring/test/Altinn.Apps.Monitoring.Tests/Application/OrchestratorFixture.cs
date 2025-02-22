@@ -37,62 +37,82 @@ internal sealed record OrchestratorFixture(
         var cancellationToken = TestContext.Current.CancellationToken;
 
         var startSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var adapterSemaphore = new SemaphoreSlim(0);
-        var pollInterval = TimeSpan.FromMinutes(10);
-        var latency = TimeSpan.FromSeconds(5);
-        var hostFixture = await HostFixture.Create(
-            (services, fixture) =>
-            {
-                services.Configure<FakeConfig>(config =>
+        SemaphoreSlim? adapterSemaphore = null;
+        HostFixture? hostFixture = null;
+        CancellationTokenSource? cancellationTokenSource = null;
+        try
+        {
+            adapterSemaphore = new SemaphoreSlim(0);
+            var pollInterval = TimeSpan.FromMinutes(10);
+            var latency = TimeSpan.FromSeconds(5);
+            hostFixture = await HostFixture.Create(
+                (services, fixture) =>
                 {
-                    config.Latency = latency;
-                    config.AdapterSemaphore = adapterSemaphore;
-                });
-                services.AddSingleton<IServiceOwnerDiscovery, FakeServiceOwnerDiscovery>();
-                services.AddSingleton<IQueryLoader, FakeQueryLoader>();
-                services.AddSingleton<FakeTelemetryAdapter>();
-                services.AddSingleton<IServiceOwnerLogsAdapter>(sp => sp.GetRequiredService<FakeTelemetryAdapter>());
-                services.AddSingleton<IServiceOwnerTraceAdapter>(sp => sp.GetRequiredService<FakeTelemetryAdapter>());
-                services.AddSingleton<IServiceOwnerMetricsAdapter>(sp => sp.GetRequiredService<FakeTelemetryAdapter>());
+                    services.Configure<FakeConfig>(config =>
+                    {
+                        config.Latency = latency;
+                        config.AdapterSemaphore = adapterSemaphore;
+                    });
+                    services.AddSingleton<IServiceOwnerDiscovery, FakeServiceOwnerDiscovery>();
+                    services.AddSingleton<IQueryLoader, FakeQueryLoader>();
+                    services.AddSingleton<FakeTelemetryAdapter>();
+                    services.AddSingleton<IServiceOwnerLogsAdapter>(sp =>
+                        sp.GetRequiredService<FakeTelemetryAdapter>()
+                    );
+                    services.AddSingleton<IServiceOwnerTraceAdapter>(sp =>
+                        sp.GetRequiredService<FakeTelemetryAdapter>()
+                    );
+                    services.AddSingleton<IServiceOwnerMetricsAdapter>(sp =>
+                        sp.GetRequiredService<FakeTelemetryAdapter>()
+                    );
 
-                services.Configure<AppConfiguration>(options =>
-                {
-                    options.DisableOrchestrator = false;
-                    options.OrchestratorStartSignal = startSignal;
-                    options.PollInterval = pollInterval;
-                });
+                    services.Configure<AppConfiguration>(options =>
+                    {
+                        options.DisableOrchestrator = false;
+                        options.OrchestratorStartSignal = startSignal;
+                        options.PollInterval = pollInterval;
+                    });
 
-                configureServices(services, fixture);
-            }
-        );
-        var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken,
-            hostFixture.Lifetime.ApplicationStopping
-        );
-        // Since we are trying to make tests more deterministic and fast,
-        // we are doing a lot of thread synchronization which is pretty error prone
-        // So to make sure we never just hang indefinitely, we are setting a timeout on all
-        // tests using this fixture
-        cancellationTokenSource.CancelAfter(TimeSpan.FromMinutes(1));
-        cancellationToken = cancellationTokenSource.Token;
+                    configureServices(services, fixture);
+                }
+            );
+            cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                hostFixture.Lifetime.ApplicationStopping
+            );
+            // Since we are trying to make tests more deterministic and fast,
+            // we are doing a lot of thread synchronization which is pretty error prone
+            // So to make sure we never just hang indefinitely, we are setting a timeout on all
+            // tests using this fixture
+            cancellationTokenSource.CancelAfter(TimeSpan.FromMinutes(1));
+            cancellationToken = cancellationTokenSource.Token;
 
-        using var _ = await hostFixture.Start(cancellationToken);
+            using var _ = await hostFixture.Start(cancellationToken);
 
-        var queryLoader = hostFixture.QueryLoader;
+            var queryLoader = hostFixture.QueryLoader;
 
-        var queries = await queryLoader.Load(cancellationToken);
+            var queries = await queryLoader.Load(cancellationToken);
 
-        var fixture = new OrchestratorFixture(
-            hostFixture,
-            startSignal,
-            adapterSemaphore,
-            pollInterval,
-            latency,
-            queries,
-            cancellationToken
-        );
-        fixture._cancellationTokenSource = cancellationTokenSource;
-        return fixture;
+            var fixture = new OrchestratorFixture(
+                hostFixture,
+                startSignal,
+                adapterSemaphore,
+                pollInterval,
+                latency,
+                queries,
+                cancellationToken
+            );
+            fixture._cancellationTokenSource = cancellationTokenSource;
+            return fixture;
+        }
+        catch
+        {
+            cancellationTokenSource?.Dispose();
+            if (hostFixture is not null)
+                await hostFixture.DisposeAsync();
+            adapterSemaphore?.Dispose();
+            throw;
+        }
     }
 
     private sealed class FakeServiceOwnerDiscovery(IOptions<FakeConfig> config, IServiceProvider serviceProvider)

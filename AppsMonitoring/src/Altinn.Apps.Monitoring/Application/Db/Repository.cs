@@ -4,12 +4,13 @@ using NpgsqlTypes;
 
 namespace Altinn.Apps.Monitoring.Application.Db;
 
+// Implementation notes:
+// * We use non-async `GetFieldValue<>` because we don't use `CommandBehavior.SequentialAccess`,
+//   so columns/values are buffered when the row read
+#pragma warning disable CA1849 // Call async methods when in an async method
+
 internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource dataSource)
 {
-    // Implementation notes:
-    // * We use non-async `GetFieldValue<>` because we don't use `CommandBehavior.SequentialAccess`,
-    //   so columns/values are buffered when the row read
-
     private readonly ILogger<Repository> _logger = logger;
     private readonly NpgsqlDataSource _dataSource = dataSource;
 

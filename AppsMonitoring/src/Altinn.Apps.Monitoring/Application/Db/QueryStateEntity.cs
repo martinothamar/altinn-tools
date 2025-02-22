@@ -1,6 +1,6 @@
 namespace Altinn.Apps.Monitoring.Application.Db;
 
-public sealed record QueryStateEntity
+internal sealed record QueryStateEntity
 {
     public required long Id { get; init; }
     public required string ServiceOwner { get; init; }

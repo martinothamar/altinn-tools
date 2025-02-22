@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using Altinn.Apps.Monitoring.Application.Db;
@@ -150,7 +151,7 @@ internal sealed partial class AzureServiceOwnerMonitorAdapter(
             var match = instanceIdRegex.Match(rootTraceRequestUrl);
             if (match.Success)
             {
-                instanceOwnerPartyId = int.Parse(match.Groups[1].Value);
+                instanceOwnerPartyId = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
                 instanceId = Guid.Parse(match.Groups[2].Value);
             }
 

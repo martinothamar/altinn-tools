@@ -15,7 +15,7 @@ namespace Altinn.Apps.Monitoring.Tests.Application.Slack;
 
 public class SlackAlerterTests
 {
-    private static readonly string _okPayload = """
+    private const string OkPayload = """
         {
             "ok": true,
             "channel": "C01UJ9G",
@@ -23,7 +23,7 @@ public class SlackAlerterTests
         }
         """;
 
-    private static readonly string _errorPayload = """
+    private const string ErrorPayload = """
         {
             "ok": false,
             "error": "Something went wrong"
@@ -45,11 +45,11 @@ public class SlackAlerterTests
         ["200-ok"] = server =>
             server
                 .Given(_slackChatPostMessageRequest)
-                .RespondWith(Response.Create().WithStatusCode(200).WithBody(_okPayload)),
+                .RespondWith(Response.Create().WithStatusCode(200).WithBody(OkPayload)),
         ["200-error"] = server =>
             server
                 .Given(_slackChatPostMessageRequest)
-                .RespondWith(Response.Create().WithStatusCode(200).WithBody(_errorPayload)),
+                .RespondWith(Response.Create().WithStatusCode(200).WithBody(ErrorPayload)),
         ["500-error"] = server =>
             server.Given(_slackChatPostMessageRequest).RespondWith(Response.Create().WithStatusCode(500)),
         ["429-ratelimited"] = server =>
@@ -66,7 +66,7 @@ public class SlackAlerterTests
                 .InScenario("recovery-from-500")
                 .WhenStateIs("error")
                 .WillSetStateTo("ok")
-                .RespondWith(Response.Create().WithStatusCode(200).WithBody(_okPayload));
+                .RespondWith(Response.Create().WithStatusCode(200).WithBody(OkPayload));
         },
         ["429-ratelimited-then-ok"] = server =>
         {
@@ -80,7 +80,7 @@ public class SlackAlerterTests
                 .InScenario("recovery-from-429")
                 .WhenStateIs("error")
                 .WillSetStateTo("ok")
-                .RespondWith(Response.Create().WithStatusCode(200).WithBody(_okPayload));
+                .RespondWith(Response.Create().WithStatusCode(200).WithBody(OkPayload));
         },
         ["500-error-4-times-then-ok"] = server =>
         {
@@ -94,7 +94,7 @@ public class SlackAlerterTests
                 .InScenario("recovery-from-500-4-times")
                 .WhenStateIs("error")
                 .WillSetStateTo("ok")
-                .RespondWith(Response.Create().WithStatusCode(200).WithBody(_okPayload));
+                .RespondWith(Response.Create().WithStatusCode(200).WithBody(OkPayload));
         },
     };
 
@@ -259,7 +259,7 @@ public class SlackAlerterTests
     [Fact]
     public async Task Deserialization_Of_Slack_Ok_Response_Succeeds()
     {
-        var json = _okPayload;
+        var json = OkPayload;
 
         var response = JsonSerializer.Deserialize<SlackAlerter.SlackResponse>(json);
         await Verify(response).AutoVerify();
@@ -268,7 +268,7 @@ public class SlackAlerterTests
     [Fact]
     public async Task Deserialization_Of_Slack_Error_Response_Succeeds()
     {
-        var json = _errorPayload;
+        var json = ErrorPayload;
 
         var response = JsonSerializer.Deserialize<SlackAlerter.SlackResponse>(json);
         await Verify(response).AutoVerify();

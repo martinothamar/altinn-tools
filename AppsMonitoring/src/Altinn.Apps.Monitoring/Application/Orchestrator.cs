@@ -7,7 +7,7 @@ using Microsoft.Extensions.Options;
 
 namespace Altinn.Apps.Monitoring.Application;
 
-public readonly record struct ServiceOwnerQueryResult(
+internal readonly record struct ServiceOwnerQueryResult(
     ServiceOwner ServiceOwner,
     Query Query,
     Instant SearchFrom,

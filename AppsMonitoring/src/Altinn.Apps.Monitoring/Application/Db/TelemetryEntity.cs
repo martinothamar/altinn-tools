@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 
 namespace Altinn.Apps.Monitoring.Application.Db;
 
-public sealed record TelemetryEntity
+internal sealed record TelemetryEntity
 {
     public required long Id { get; init; }
     public required string ExtId { get; init; }
@@ -20,7 +20,7 @@ public sealed record TelemetryEntity
 [JsonDerivedType(typeof(TraceData), typeDiscriminator: "trace")]
 [JsonDerivedType(typeof(LogsData), typeDiscriminator: "logs")]
 [JsonDerivedType(typeof(MetricData), typeDiscriminator: "metric")]
-public abstract class TelemetryData
+internal abstract class TelemetryData
 {
     public required int AltinnErrorId { get; init; }
 
@@ -45,7 +45,7 @@ public abstract class TelemetryData
     }
 }
 
-public sealed class TraceData : TelemetryData
+internal sealed class TraceData : TelemetryData
 {
     public required int? InstanceOwnerPartyId { get; init; }
     public required Guid? InstanceId { get; init; }
@@ -60,7 +60,7 @@ public sealed class TraceData : TelemetryData
     public required Dictionary<string, string?>? Attributes { get; init; }
 }
 
-public sealed class LogsData : TelemetryData
+internal sealed class LogsData : TelemetryData
 {
     public required string? TraceId { get; init; }
     public required string? SpanId { get; init; }
@@ -68,7 +68,7 @@ public sealed class LogsData : TelemetryData
     public required Dictionary<string, string?>? Attributes { get; init; }
 }
 
-public sealed class MetricData : TelemetryData
+internal sealed class MetricData : TelemetryData
 {
     public required string Name { get; init; }
     public required double Value { get; init; }

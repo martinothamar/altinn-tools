@@ -1,6 +1,6 @@
 namespace Altinn.Apps.Monitoring.Application;
 
-public sealed class AppConfiguration
+internal sealed class AppConfiguration
 {
     public TimeSpan PollInterval { get; set; } = TimeSpan.FromMinutes(10);
     public int SearchFromDays { get; set; } = 90;

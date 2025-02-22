@@ -5,7 +5,7 @@ namespace Altinn.Apps.Monitoring.Domain;
 /// <summary>
 /// E.g "skd" "brg"
 /// </summary>
-public readonly struct ServiceOwner : IEquatable<ServiceOwner>
+internal readonly struct ServiceOwner : IEquatable<ServiceOwner>
 {
     private readonly string _value;
 
@@ -35,7 +35,7 @@ public readonly struct ServiceOwner : IEquatable<ServiceOwner>
 
     public override bool Equals([NotNullWhen(true)] object? obj) => obj is ServiceOwner other && Equals(other);
 
-    public override int GetHashCode() => _value.GetHashCode();
+    public override int GetHashCode() => _value.GetHashCode(StringComparison.Ordinal);
 
     public override string ToString() => _value;
 

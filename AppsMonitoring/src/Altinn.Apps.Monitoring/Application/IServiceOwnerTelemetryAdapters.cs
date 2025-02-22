@@ -3,7 +3,7 @@ using Altinn.Apps.Monitoring.Domain;
 
 namespace Altinn.Apps.Monitoring.Application;
 
-public interface IServiceOwnerLogsAdapter
+internal interface IServiceOwnerLogsAdapter
 {
     ValueTask<IReadOnlyList<IReadOnlyList<TelemetryEntity>>> Query(
         ServiceOwner serviceOwner,
@@ -14,7 +14,7 @@ public interface IServiceOwnerLogsAdapter
     );
 }
 
-public interface IServiceOwnerTraceAdapter
+internal interface IServiceOwnerTraceAdapter
 {
     ValueTask<IReadOnlyList<IReadOnlyList<TelemetryEntity>>> Query(
         ServiceOwner serviceOwner,
@@ -25,7 +25,7 @@ public interface IServiceOwnerTraceAdapter
     );
 }
 
-public interface IServiceOwnerMetricsAdapter
+internal interface IServiceOwnerMetricsAdapter
 {
     ValueTask<IReadOnlyList<IReadOnlyList<TelemetryEntity>>> Query(
         ServiceOwner serviceOwner,

@@ -49,7 +49,8 @@ internal sealed class HostFixture : WebApplicationFactory<Program>
         var client = CreateClient();
         try
         {
-            Assert.Equal("Healthy", await client.GetStringAsync("/health", cancellationToken));
+            var response = await client.GetStringAsync(new Uri("/health", UriKind.Relative), cancellationToken);
+            Assert.Equal("Healthy", response);
             return client;
         }
         catch
@@ -190,7 +191,7 @@ internal sealed class HostFixture : WebApplicationFactory<Program>
         {
             var execResult = await container.ExecAsync(_command).ConfigureAwait(false);
 
-            if (execResult.Stderr.Contains("pg_isready was not found"))
+            if (execResult.Stderr.Contains("pg_isready was not found", StringComparison.OrdinalIgnoreCase))
             {
                 throw new NotSupportedException(
                     $"The '{container.Image.FullName}' image does not contain: pg_isready. Please use 'postgres:9.3' onwards."

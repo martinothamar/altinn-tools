@@ -143,7 +143,7 @@ internal sealed class Seeder(
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
-    public sealed class ErrorRecord
+    internal sealed class ErrorRecord
     {
         [PrimaryKey, AutoIncrement]
         public int PK { get; set; }

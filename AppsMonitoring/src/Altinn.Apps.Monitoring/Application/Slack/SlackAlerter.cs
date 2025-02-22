@@ -302,6 +302,7 @@ internal sealed class SlackAlerter(
     public void Dispose()
     {
         _cancellationTokenSource?.Dispose();
+        _httpClient.Dispose();
     }
 
     internal sealed record SlackAlertData : AlertData

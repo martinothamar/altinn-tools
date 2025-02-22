@@ -40,7 +40,7 @@ internal sealed class DistributedLocking(ILogger<DistributedLocking> logger, IOp
         return handle;
     }
 
-    public interface IDistributedLockHandle : IAsyncDisposable
+    internal interface IDistributedLockHandle : IAsyncDisposable
     {
         CancellationToken HandleLostToken { get; }
     }

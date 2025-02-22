@@ -1,17 +1,20 @@
+using System.Globalization;
 using System.IO.Hashing;
 using System.Text;
 using Microsoft.Extensions.Options;
 
 namespace Altinn.Apps.Monitoring.Application;
 
-public enum QueryType
+internal enum QueryType
 {
     Traces,
     Logs,
     Metrics,
 }
 
-public sealed record Query
+#pragma warning disable CA1724 // Type name conflicts with namespace name
+internal sealed record Query
+#pragma warning restore CA1724 // Type name conflicts with namespace name
 {
     public string Name { get; }
     public QueryType Type { get; }
@@ -20,7 +23,7 @@ public sealed record Query
 
     public string Format(Instant searchFrom, Instant searchTo) =>
         // Default instant string format is ISO 8601
-        string.Format(QueryTemplate, searchFrom.ToString(), searchTo.ToString());
+        string.Format(CultureInfo.InvariantCulture, QueryTemplate, searchFrom.ToString(), searchTo.ToString());
 
     public Query(string name, QueryType type, string queryTemplate)
     {
@@ -37,12 +40,12 @@ public sealed record Query
     }
 }
 
-public interface IQueryLoader
+internal interface IQueryLoader
 {
     ValueTask<IReadOnlyList<Query>> Load(CancellationToken cancellationToken);
 }
 
-public sealed class StaticQueryLoader(ILogger<StaticQueryLoader> logger, IOptionsMonitor<AppConfiguration> config)
+internal sealed class StaticQueryLoader(ILogger<StaticQueryLoader> logger, IOptionsMonitor<AppConfiguration> config)
     : IQueryLoader
 {
     private readonly ILogger<StaticQueryLoader> _logger = logger;

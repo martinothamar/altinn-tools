@@ -2,7 +2,7 @@ using Altinn.Apps.Monitoring.Domain;
 
 namespace Altinn.Apps.Monitoring.Application;
 
-public interface IServiceOwnerDiscovery
+internal interface IServiceOwnerDiscovery
 {
     ValueTask<IReadOnlyList<ServiceOwner>> Discover(CancellationToken cancellationToken);
 }

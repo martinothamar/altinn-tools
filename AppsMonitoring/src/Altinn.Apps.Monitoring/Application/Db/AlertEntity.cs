@@ -1,18 +1,17 @@
-using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Altinn.Apps.Monitoring.Application.Slack;
 
 namespace Altinn.Apps.Monitoring.Application.Db;
 
-public enum AlertState
+internal enum AlertState
 {
     Pending,
     Alerted,
     Mitigated,
 }
 
-public sealed record AlertEntity
+internal sealed record AlertEntity
 {
     public required long Id { get; init; }
 
@@ -24,9 +23,9 @@ public sealed record AlertEntity
 }
 
 [JsonDerivedType(typeof(SlackAlerter.SlackAlertData), typeDiscriminator: Types.Slack)]
-public abstract record AlertData
+internal abstract record AlertData
 {
-    public static class Types
+    internal static class Types
     {
         public const string Slack = "slack";
 

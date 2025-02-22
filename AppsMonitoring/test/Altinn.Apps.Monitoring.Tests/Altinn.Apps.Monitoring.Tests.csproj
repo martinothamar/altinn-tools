@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <OutputType>Exe</OutputType>
+    <NoWarn>CA1812</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

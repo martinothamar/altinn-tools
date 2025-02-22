@@ -2,7 +2,7 @@ using System.Runtime.CompilerServices;
 
 namespace Altinn.Apps.Monitoring.Tests;
 
-public static class ModuleInitializer
+internal static class ModuleInitializer
 {
     [ModuleInitializer]
     public static void Init()
