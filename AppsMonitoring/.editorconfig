@@ -149,12 +149,16 @@ dotnet_diagnostic.CA2201.severity = suggestion
 # CA1816: Call GC.SuppressFinalize correctly
 dotnet_diagnostic.CA1816.severity = warning
 
+# CA1707: Identifiers should not contain underscores
+dotnet_diagnostic.CA1707.severity = none
+
 [*.{yml,yaml}]
 indent_size = 2
 end_of_line = lf
 
 # Verify settings
 # https://github.com/VerifyTests/Verify?tab=readme-ov-file#editorconfig-settings
+
 [*.{received,verified}.{json,txt,xml}]
 charset = "utf-8-bom"
 end_of_line = lf

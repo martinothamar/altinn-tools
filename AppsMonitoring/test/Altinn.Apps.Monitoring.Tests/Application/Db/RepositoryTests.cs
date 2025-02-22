@@ -42,7 +42,7 @@ public class RepositoryTests
     }
 
     [Fact]
-    public async Task Test_Insert_Telemetry()
+    public async Task Insert_Telemetry_Is_Idempotent()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
 

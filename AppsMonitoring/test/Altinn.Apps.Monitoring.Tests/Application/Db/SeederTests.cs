@@ -5,7 +5,7 @@ namespace Altinn.Apps.Monitoring.Tests.Application.Db;
 public class SeederTests
 {
     [Fact]
-    public async Task Test_Seed_Mini()
+    public async Task Seeds_Db_Successfully()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
 

@@ -1,6 +1,6 @@
 ﻿[
   {
-    Desc: Iteration 1 - 2 records,
+    Desc: Iteration 1 - generator=Multiple,
     Start: 2025-01-01T12:00:00Z,
     End: 2025-01-01T12:00:05Z,
     StateBefore: {
@@ -82,7 +82,7 @@
     }
   },
   {
-    Desc: Iteration 2 - 2 records,
+    Desc: Iteration 2 - generator=Multiple,
     Start: 2025-01-01T12:10:00Z,
     End: 2025-01-01T12:10:05Z,
     StateBefore: {

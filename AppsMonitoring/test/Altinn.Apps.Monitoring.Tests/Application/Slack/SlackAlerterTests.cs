@@ -116,7 +116,7 @@ public class SlackAlerterTests
 
     [Theory]
     [MemberData(nameof(SlackApiParameters))]
-    public async Task Test_Alerting(string @case, int waitForRetryEvents)
+    public async Task Alerts_Eventually_Successfully_For_Non_Seeded_Telemetry(string @case, int waitForRetryEvents)
     {
         ServiceOwner[] serviceOwners = [ServiceOwner.Parse("skd")];
         await using var fixture = await OrchestratorFixture.Create(
@@ -257,7 +257,7 @@ public class SlackAlerterTests
     }
 
     [Fact]
-    public async Task Test_Deserialization_Of_Ok_Response()
+    public async Task Deserialization_Of_Slack_Ok_Response_Succeeds()
     {
         var json = _okPayload;
 
@@ -266,7 +266,7 @@ public class SlackAlerterTests
     }
 
     [Fact]
-    public async Task Test_Deserialization_Of_Error_Response()
+    public async Task Deserialization_Of_Slack_Error_Response_Succeeds()
     {
         var json = _errorPayload;
 

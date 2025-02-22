@@ -5,7 +5,7 @@ namespace Altinn.Apps.Monitoring.Tests.Application.Db;
 public class TelemetryEntityTests
 {
     [Fact]
-    public async Task Test_Trace_Data_Serialization()
+    public async Task TelemetryData_Trace_Serialization_Roundtrip_Succeeds()
     {
         var data = TestData.GenerateTelemetryTraceData();
 
@@ -19,7 +19,7 @@ public class TelemetryEntityTests
     }
 
     [Fact]
-    public async Task Test_Logs_Data_Serialization()
+    public async Task TelemetryData_Logs_Serialization_Roundtrip_Succeeds()
     {
         var data = new LogsData
         {
@@ -40,7 +40,7 @@ public class TelemetryEntityTests
     }
 
     [Fact]
-    public async Task Test_Metric_Data_Serialization()
+    public async Task TelemetryData_Metrics_Serialization_Roundtrip_Succeeds()
     {
         var data = new MetricData
         {
