@@ -44,10 +44,10 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
         {
             var item = new QueryStateEntity
             {
-                Id = reader.GetInt64(0),
-                ServiceOwner = reader.GetString(1),
-                Name = reader.GetString(2),
-                Hash = reader.GetString(3),
+                Id = reader.GetFieldValue<long>(0),
+                ServiceOwner = reader.GetFieldValue<string>(1),
+                Name = reader.GetFieldValue<string>(2),
+                Hash = reader.GetFieldValue<string>(3),
                 QueriedUntil = reader.GetFieldValue<Instant>(4),
             };
 
@@ -76,15 +76,15 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
     {
         return new TelemetryEntity
         {
-            Id = reader.GetInt64(0),
-            ExtId = reader.GetString(1),
-            ServiceOwner = reader.GetString(2),
-            AppName = reader.GetString(3),
-            AppVersion = reader.GetString(4),
+            Id = reader.GetFieldValue<long>(0),
+            ExtId = reader.GetFieldValue<string>(1),
+            ServiceOwner = reader.GetFieldValue<string>(2),
+            AppName = reader.GetFieldValue<string>(3),
+            AppVersion = reader.GetFieldValue<string>(4),
             TimeGenerated = reader.GetFieldValue<Instant>(5),
             TimeIngested = reader.GetFieldValue<Instant>(6),
-            DupeCount = reader.GetInt64(7),
-            Seeded = reader.GetBoolean(8),
+            DupeCount = reader.GetFieldValue<long>(7),
+            Seeded = reader.GetFieldValue<bool>(8),
             Data = reader.GetFieldValue<TelemetryData>(9),
         };
     }
@@ -196,7 +196,7 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
                 while (await reader.ReadAsync(cancellationToken))
                 {
-                    var extId = reader.GetString(0);
+                    var extId = reader.GetFieldValue<string>(0);
                     var timeIngested = reader.GetFieldValue<Instant>(1);
                     if (timeIngested != ingestionTimestamp)
                         dupes.Add(extId);
@@ -234,6 +234,34 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
         return written;
     }
 
+    public async ValueTask<int> SeedTelemetry(
+        IReadOnlyList<TelemetryEntity> telemetry,
+        CancellationToken cancellationToken
+    )
+    {
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var import = connection.BeginBinaryImport(
+            "COPY monitoring.telemetry (ext_id, service_owner, app_name, app_version, time_generated, time_ingested, dupe_count, seeded, data) FROM STDIN (FORMAT binary)"
+        );
+        for (int i = 0; i < telemetry.Count; i++)
+        {
+            var item = telemetry[i];
+
+            await import.StartRowAsync(cancellationToken);
+            await import.WriteAsync(item.ExtId, NpgsqlDbType.Text, cancellationToken);
+            await import.WriteAsync(item.ServiceOwner, NpgsqlDbType.Text, cancellationToken);
+            await import.WriteAsync(item.AppName, NpgsqlDbType.Text, cancellationToken);
+            await import.WriteAsync(item.AppVersion, NpgsqlDbType.Text, cancellationToken);
+            await import.WriteAsync(item.TimeGenerated, NpgsqlDbType.TimestampTz, cancellationToken);
+            await import.WriteAsync(item.TimeIngested, NpgsqlDbType.TimestampTz, cancellationToken);
+            await import.WriteAsync(item.DupeCount, NpgsqlDbType.Bigint, cancellationToken);
+            await import.WriteAsync(item.Seeded, NpgsqlDbType.Boolean, cancellationToken);
+            await import.WriteAsync(item.Data, NpgsqlDbType.Jsonb, cancellationToken);
+        }
+
+        return (int)await import.CompleteAsync(cancellationToken);
+    }
+
     public async ValueTask<(TelemetryEntity Telemetry, AlertEntity? Alert)[]> ListAlerterWorkItems(
         string type,
         CancellationToken cancellationToken
@@ -268,13 +296,13 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
         while (await reader.ReadAsync(cancellationToken))
         {
             var telemetry = await ReadTelemetryEntity(reader, cancellationToken);
-            var alertId = reader.IsDBNull(10) ? (long?)null : reader.GetInt64(10);
+            var alertId = reader.IsDBNull(10) ? (long?)null : reader.GetFieldValue<long>(10);
             var alert = alertId is null
                 ? null
                 : new AlertEntity
                 {
                     Id = alertId.Value,
-                    State = (AlertState)reader.GetInt32(11),
+                    State = (AlertState)reader.GetFieldValue<int>(11),
                     TelemetryId = telemetry.Id,
                     Data = reader.GetFieldValue<AlertData>(12),
                 };
@@ -301,9 +329,9 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
         {
             var item = new AlertEntity
             {
-                Id = reader.GetInt64(0),
-                State = (AlertState)reader.GetInt32(1),
-                TelemetryId = reader.GetInt64(2),
+                Id = reader.GetFieldValue<long>(0),
+                State = (AlertState)reader.GetFieldValue<int>(1),
+                TelemetryId = reader.GetFieldValue<long>(2),
                 Data = reader.GetFieldValue<AlertData>(3),
             };
 

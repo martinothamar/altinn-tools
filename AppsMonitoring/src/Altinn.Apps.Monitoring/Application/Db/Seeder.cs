@@ -1,7 +1,5 @@
 using Altinn.Apps.Monitoring.Domain;
 using Microsoft.Extensions.Options;
-using Npgsql;
-using NpgsqlTypes;
 using SQLite;
 
 namespace Altinn.Apps.Monitoring.Application.Db;
@@ -10,13 +8,11 @@ internal sealed class Seeder(
     ILogger<Seeder> logger,
     IOptions<AppConfiguration> config,
     Repository repository,
-    NpgsqlDataSource dataSource,
     DistributedLocking locking
 ) : IHostedService
 {
     private readonly ILogger<Seeder> _logger = logger;
     private readonly Repository _repository = repository;
-    private readonly NpgsqlDataSource _dataSource = dataSource;
     private readonly AppConfiguration _config = config.Value;
     private readonly DistributedLocking _locking = locking;
     private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -116,27 +112,9 @@ internal sealed class Seeder(
 
                 _logger.LogInformation("Seeding database with {Count} trace records", entities.Length);
 
-                await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
-                await using var import = connection.BeginBinaryImport(
-                    "COPY monitoring.telemetry (ext_id, service_owner, app_name, app_version, time_generated, time_ingested, dupe_count, seeded, data) FROM STDIN (FORMAT binary)"
-                );
-                for (int i = 0; i < entities.Length; i++)
-                {
-                    var item = entities[i];
-
-                    await import.StartRowAsync(cancellationToken);
-                    await import.WriteAsync(item.ExtId, NpgsqlDbType.Text, cancellationToken);
-                    await import.WriteAsync(item.ServiceOwner, NpgsqlDbType.Text, cancellationToken);
-                    await import.WriteAsync(item.AppName, NpgsqlDbType.Text, cancellationToken);
-                    await import.WriteAsync(item.AppVersion, NpgsqlDbType.Text, cancellationToken);
-                    await import.WriteAsync(item.TimeGenerated, NpgsqlDbType.TimestampTz, cancellationToken);
-                    await import.WriteAsync(item.TimeIngested, NpgsqlDbType.TimestampTz, cancellationToken);
-                    await import.WriteAsync(item.DupeCount, NpgsqlDbType.Bigint, cancellationToken);
-                    await import.WriteAsync(item.Seeded, NpgsqlDbType.Boolean, cancellationToken);
-                    await import.WriteAsync(item.Data, NpgsqlDbType.Jsonb, cancellationToken);
-                }
-
-                await import.CompleteAsync(cancellationToken);
+                var seeded = await _repository.SeedTelemetry(entities, cancellationToken);
+                if (seeded != entities.Length)
+                    throw new InvalidOperationException("Failed to seed all trace records, needs investigation");
 
                 _logger.LogInformation("Seeding database with {Count} trace records completed", entities.Length);
             }
