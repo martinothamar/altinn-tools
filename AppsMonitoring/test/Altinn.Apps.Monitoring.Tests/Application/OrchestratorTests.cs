@@ -72,7 +72,6 @@ public class OrchestratorTests
         [TelemetryGenerator.WithSeeder] = sp =>
         {
             var timeProvider = sp.GetRequiredService<TimeProvider>();
-            var options = sp.GetRequiredService<IOptions<AppConfiguration>>().Value;
             var serviceOwners =
                 sp.GetRequiredService<IOptions<FakeConfig>>().Value.ServiceOwnersDiscovery?.Invoke(sp) ?? [];
             long id = 1;
@@ -136,27 +135,13 @@ public class OrchestratorTests
         var changes = new List<Change>();
         IReadOnlyList<TelemetryEntity> telemetryAfter;
         IReadOnlyList<QueryStateEntity> queryStateAfter;
-        var expectedQueryResults = queries.Count * serviceOwners.Length;
         {
             // Initial loop iterations (discovery and querying)
-            var start = timeProvider.GetCurrentInstant();
             var (telemetryBefore, queryStateBefore) = await GetState(repository, cancellationToken);
-            startSignal.SetResult();
-
-            // Wait until all adapters are querying, then advance time
-            for (int i = 0; i < expectedQueryResults; i++)
-            {
-                var wasSignaled = await adapterSemaphore.WaitAsync(TimeSpan.FromSeconds(2), cancellationToken);
-                Assert.True(wasSignaled);
-            }
-            timeProvider.Advance(latency);
+            var start = fixture.Start();
 
             List<ServiceOwnerQueryResult> queryResults = new();
-            for (int i = 0; i < expectedQueryResults; i++)
-            {
-                var result = await results.ReadAsync(cancellationToken);
-                queryResults.Add(result);
-            }
+            await fixture.WaitForQueryResults(queryResults, cancellationToken);
 
             (telemetryAfter, queryStateAfter) = await GetState(repository, cancellationToken);
             var end = timeProvider.GetCurrentInstant();
@@ -174,24 +159,11 @@ public class OrchestratorTests
 
         if (generator != TelemetryGenerator.WithSeeder)
         {
-            timeProvider.Advance(pollInterval - (latency * queries.Count));
-            var start = timeProvider.GetCurrentInstant();
+            var start = fixture.NextIteration();
             var (telemetryBefore, queryStateBefore) = (telemetryAfter, queryStateAfter);
 
-            // Wait until all adapters are querying, then advance time
-            for (int i = 0; i < expectedQueryResults; i++)
-            {
-                var wasSignaled = await adapterSemaphore.WaitAsync(TimeSpan.FromSeconds(2), cancellationToken);
-                Assert.True(wasSignaled);
-            }
-            timeProvider.Advance(latency);
-
             List<ServiceOwnerQueryResult> queryResults = new();
-            for (int i = 0; i < expectedQueryResults; i++)
-            {
-                var result = await results.ReadAsync(cancellationToken);
-                queryResults.Add(result);
-            }
+            await fixture.WaitForQueryResults(queryResults, cancellationToken);
 
             (telemetryAfter, queryStateAfter) = await GetState(repository, cancellationToken);
             var end = timeProvider.GetCurrentInstant();

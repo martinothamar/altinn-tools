@@ -25,6 +25,49 @@ internal sealed record OrchestratorFixture(
 {
     private CancellationTokenSource? _cancellationTokenSource;
 
+    public Instant Start()
+    {
+        var start = HostFixture.TimeProvider.GetCurrentInstant();
+        StartSignal.SetResult();
+        return start;
+    }
+
+    public Instant NextIteration()
+    {
+        HostFixture.TimeProvider.Advance(PollInterval - (Latency * Queries.Count));
+        return HostFixture.TimeProvider.GetCurrentInstant();
+    }
+
+    public async ValueTask WaitForQueryResults(
+        List<ServiceOwnerQueryResult> queryResults,
+        CancellationToken cancellationToken
+    )
+    {
+        var fakeConfig = HostFixture.Services.GetRequiredService<IOptions<FakeConfig>>().Value;
+        var serviceOwners = fakeConfig.ServiceOwnersDiscovery?.Invoke(HostFixture.Services) ?? [];
+        var orchestratorResults = HostFixture.Orchestrator.Results;
+
+        // Wait until all adapters are querying, then advance time
+        var expectedQueryResults = Queries.Count * serviceOwners.Count;
+        for (int i = 0; i < expectedQueryResults; i++)
+        {
+            var wasSignaled = await AdapterSemaphore.WaitAsync(TimeSpan.FromSeconds(2), cancellationToken);
+            Assert.True(wasSignaled);
+        }
+        // There is a small window of time between the adapter calling `Release`
+        // and the adapter actually hitting the `Task.Delay` await point with the fake TimeProvider.
+        // So we have this `Task.Yield` to make this race more improbable (this happened very rarely)
+        await Task.Yield();
+        HostFixture.TimeProvider.Advance(Latency);
+
+        // Now the events should be available eventually (the adapters should be responding)
+        for (int i = 0; i < expectedQueryResults; i++)
+        {
+            var result = await orchestratorResults.ReadAsync(cancellationToken);
+            queryResults.Add(result);
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         await HostFixture.DisposeAsync();

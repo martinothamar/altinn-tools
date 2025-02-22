@@ -17,7 +17,8 @@
           AppVersion: 8.0.0,
           TimeGenerated: 2025-01-01T11:45:00Z,
           TimeIngested: 2025-01-01T12:00:00Z,
-          Seeded: false
+          Seeded: false,
+          Data: {Scrubbed}
         }
       ]
     },
@@ -31,7 +32,8 @@
           AppVersion: 8.0.0,
           TimeGenerated: 2025-01-01T11:45:00Z,
           TimeIngested: 2025-01-01T12:00:00Z,
-          Seeded: false
+          Seeded: false,
+          Data: {Scrubbed}
         }
       ],
       Queries: [
@@ -60,7 +62,8 @@
           AppVersion: 8.0.0,
           TimeGenerated: 2025-01-01T11:45:00Z,
           TimeIngested: 2025-01-01T12:00:00Z,
-          Seeded: false
+          Seeded: false,
+          Data: {Scrubbed}
         }
       ],
       Queries: [
@@ -83,7 +86,8 @@
           AppVersion: 8.0.0,
           TimeGenerated: 2025-01-01T11:45:00Z,
           TimeIngested: 2025-01-01T12:10:00Z,
-          Seeded: false
+          Seeded: false,
+          Data: {Scrubbed}
         }
       ]
     },
@@ -98,7 +102,8 @@
           TimeGenerated: 2025-01-01T11:45:00Z,
           TimeIngested: 2025-01-01T12:00:00Z,
           DupeCount: 1,
-          Seeded: false
+          Seeded: false,
+          Data: {Scrubbed}
         }
       ],
       Queries: [
@@ -127,7 +132,8 @@
           TimeGenerated: 2025-01-01T11:45:00Z,
           TimeIngested: 2025-01-01T12:00:00Z,
           DupeCount: 1,
-          Seeded: false
+          Seeded: false,
+          Data: {Scrubbed}
         }
       ],
       Queries: [
@@ -151,7 +157,8 @@
           TimeGenerated: 2025-01-01T11:45:00Z,
           TimeIngested: 2025-01-01T12:20:00Z,
           DupeCount: 1,
-          Seeded: false
+          Seeded: false,
+          Data: {Scrubbed}
         }
       ]
     },
@@ -166,7 +173,8 @@
           TimeGenerated: 2025-01-01T11:45:00Z,
           TimeIngested: 2025-01-01T12:00:00Z,
           DupeCount: 1,
-          Seeded: false
+          Seeded: false,
+          Data: {Scrubbed}
         },
         {
           Id: 3,
@@ -176,7 +184,8 @@
           AppVersion: 8.0.0,
           TimeGenerated: 2025-01-01T11:45:00Z,
           TimeIngested: 2025-01-01T12:20:00Z,
-          Seeded: false
+          Seeded: false,
+          Data: {Scrubbed}
         }
       ],
       Queries: [

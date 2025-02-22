@@ -177,22 +177,9 @@ public class SlackAlerterTests
         List<AlerterEvent> alerterEvents = new();
         {
             // Let orchestrator start work
-            startSignal.SetResult();
+            _ = fixture.Start();
 
-            var expectedQueryResults = queries.Count * serviceOwners.Length;
-            // Wait until all adapters are querying, then advance time
-            for (int i = 0; i < expectedQueryResults; i++)
-            {
-                var wasSignaled = await adapterSemaphore.WaitAsync(TimeSpan.FromSeconds(2), cancellationToken);
-                Assert.True(wasSignaled);
-            }
-            timeProvider.Advance(latency);
-
-            for (int i = 0; i < expectedQueryResults; i++)
-            {
-                var result = await orchestratorResults.ReadAsync(cancellationToken);
-                queryResults.Add(result);
-            }
+            await fixture.WaitForQueryResults(queryResults, cancellationToken);
         }
         {
             // We can just fetch all telemetry, since we haven't alerted anything yet,

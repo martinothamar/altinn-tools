@@ -16,31 +16,6 @@ public class RepositoryTests
         return (telemetry, queries);
     }
 
-    private static Change NewChange(
-        string desc,
-        Instant start,
-        Instant end,
-        (IReadOnlyList<TelemetryEntity> Telemetry, IReadOnlyList<QueryStateEntity> Queries) stateBefore,
-        (string ServiceOwner, IReadOnlyList<TelemetryEntity> Telemetry) inputData,
-        (IReadOnlyList<TelemetryEntity> Telemetry, IReadOnlyList<QueryStateEntity> Queries) stateAfter,
-        int persistedEntities
-    )
-    {
-        // Reset data to make snapshots a little less noisy
-        var telemetryBefore = stateBefore.Telemetry.Select(t => t with { Data = null! }).ToArray();
-        var telemetryAfter = stateAfter.Telemetry.Select(t => t with { Data = null! }).ToArray();
-        var inputTelemetry = inputData.Telemetry.Select(t => t with { Data = null! }).ToArray();
-        return new Change(
-            desc,
-            start,
-            end,
-            new State(telemetryBefore, stateBefore.Queries),
-            new(inputData.ServiceOwner, inputTelemetry),
-            new State(telemetryAfter, stateAfter.Queries),
-            persistedEntities
-        );
-    }
-
     [Fact]
     public async Task Insert_Telemetry_Is_Idempotent()
     {
@@ -78,13 +53,13 @@ public class RepositoryTests
             timeProvider.Advance(Duration.FromMinutes(10).ToTimeSpan());
             var end = timeProvider.GetCurrentInstant();
             changes.Add(
-                NewChange(
+                new Change(
                     "First write from clean DB",
                     start,
                     end,
-                    (telemetryBefore, queryStateBefore),
-                    (serviceOwner.Value, telemetry),
-                    (telemetryAfter, queryStateAfter),
+                    new(telemetryBefore, queryStateBefore),
+                    new(serviceOwner.Value, telemetry),
+                    new(telemetryAfter, queryStateAfter),
                     persisted
                 )
             );
@@ -111,13 +86,13 @@ public class RepositoryTests
             timeProvider.Advance(Duration.FromMinutes(10).ToTimeSpan());
             var end = timeProvider.GetCurrentInstant();
             changes.Add(
-                NewChange(
+                new Change(
                     "Second write with existing data (test for idempotency)",
                     start,
                     end,
-                    (telemetryBefore, queryStateBefore),
-                    (serviceOwner.Value, telemetry),
-                    (telemetryAfter, queryStateAfter),
+                    new(telemetryBefore, queryStateBefore),
+                    new(serviceOwner.Value, telemetry),
+                    new(telemetryAfter, queryStateAfter),
                     persisted
                 )
             );
@@ -146,19 +121,23 @@ public class RepositoryTests
             timeProvider.Advance(Duration.FromMinutes(10).ToTimeSpan());
             var end = timeProvider.GetCurrentInstant();
             changes.Add(
-                NewChange(
+                new Change(
                     "Same data, different service owner, expecting write",
                     start,
                     end,
-                    (telemetryBefore, queryStateBefore),
-                    (serviceOwner.Value, telemetry),
-                    (telemetryAfter, queryStateAfter),
+                    new(telemetryBefore, queryStateBefore),
+                    new(serviceOwner.Value, telemetry),
+                    new(telemetryAfter, queryStateAfter),
                     persisted
                 )
             );
         }
 
-        await Verify(changes).AutoVerify().DontScrubDateTimes().DontIgnoreEmptyCollections();
+        await Verify(changes)
+            .AutoVerify()
+            .ScrubMember<TelemetryEntity>(e => e.Data)
+            .DontScrubDateTimes()
+            .DontIgnoreEmptyCollections();
     }
 
     private sealed record Change(
