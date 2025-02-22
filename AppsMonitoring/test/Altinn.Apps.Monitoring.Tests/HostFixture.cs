@@ -3,6 +3,7 @@ using Altinn.Apps.Monitoring.Application.Db;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
+using Meziantou.Extensions.Logging.Xunit.v3;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Time.Testing;
 using Testcontainers.PostgreSql;
@@ -30,6 +31,8 @@ internal sealed class HostFixture : WebApplicationFactory<Program>
     public IAlerter Alerter => Services.GetRequiredService<IAlerter>();
 
     public IQueryLoader QueryLoader => Services.GetRequiredService<IQueryLoader>();
+
+    public IHostApplicationLifetime Lifetime => Services.GetRequiredService<IHostApplicationLifetime>();
 
     private HostFixture(
         PostgreSqlContainer postgreSqlContainer,
@@ -59,6 +62,12 @@ internal sealed class HostFixture : WebApplicationFactory<Program>
 
     protected override IHost CreateHost(IHostBuilder builder)
     {
+        builder.ConfigureLogging(logging =>
+        {
+            logging.ClearProviders();
+            logging.SetMinimumLevel(LogLevel.Warning);
+            // logging.AddXunit();
+        });
         builder.ConfigureHostConfiguration(config =>
         {
             config.AddInMemoryCollection(
@@ -83,6 +92,7 @@ internal sealed class HostFixture : WebApplicationFactory<Program>
     {
         await base.DisposeAsync();
         await PostgreSqlContainer.DisposeAsync();
+        MockServer.Dispose();
     }
 
     private void ConfigureServices(IServiceCollection services)

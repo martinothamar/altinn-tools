@@ -148,7 +148,10 @@ internal sealed class Seeder(
         catch (Exception ex)
         {
             if (ex is OperationCanceledException)
+            {
+                _logger.LogInformation("Seeder was cancelled");
                 return;
+            }
 
             _completion.TrySetException(ex);
             _logger.LogError(ex, "Failed seeding database");

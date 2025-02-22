@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Channels;
@@ -18,11 +19,17 @@ internal sealed class SlackAlerter(
     Repository repository
 ) : IAlerter, IDisposable
 {
+    // NOTE: if retry behavior is changed, also update the expected retry behavior in the SlackAlerterTests
+    internal const int MaxSlackApiRetryAttempts = 3;
     private readonly HttpClient _httpClient = new HttpClient(
         new ResilienceHandler(
-            new ResiliencePipelineBuilder<HttpResponseMessage>()
+            new ResiliencePipelineBuilder<HttpResponseMessage>() { TimeProvider = timeProvider }
                 .AddRetry(
-                    new HttpRetryStrategyOptions { BackoffType = DelayBackoffType.Exponential, MaxRetryAttempts = 3 }
+                    new HttpRetryStrategyOptions
+                    {
+                        BackoffType = DelayBackoffType.Exponential,
+                        MaxRetryAttempts = MaxSlackApiRetryAttempts,
+                    }
                 )
                 .Build()
         )
@@ -82,7 +89,7 @@ internal sealed class SlackAlerter(
         var config = _config.CurrentValue;
         try
         {
-            await using var handle = await locking.Lock(DistributedLockName.Alerter, cancellationToken);
+            await using var handle = await _locking.Lock(DistributedLockName.Alerter, cancellationToken);
             if (handle.HandleLostToken.CanBeCanceled)
             {
                 _logger.LogInformation("Will monitor for lost alerter lock");
@@ -130,19 +137,18 @@ internal sealed class SlackAlerter(
                         while (alert.State < AlertState.Mitigated)
                         {
                             var updatedAlert = await ProgressAlert(item, alert, cancellationToken);
+                            var alertEvent = new AlerterEvent
+                            {
+                                Item = item,
+                                AlertBefore = alert,
+                                AlertAfter = updatedAlert,
+                            };
+                            await _results.Writer.WriteAsync(alertEvent, cancellationToken);
                             if (updatedAlert is null)
                                 break; // Try again later
+
                             await _repository.SaveAlert(updatedAlert, cancellationToken);
 
-                            await _results.Writer.WriteAsync(
-                                new AlerterEvent
-                                {
-                                    Item = item,
-                                    AlertBefore = alert,
-                                    AlertAfter = updatedAlert,
-                                },
-                                cancellationToken
-                            );
                             alert = updatedAlert;
                             workItems[i] = (item, alert);
                         }
@@ -221,40 +227,63 @@ internal sealed class SlackAlerter(
                     - Operation ID: *{data.TraceId}*
                     """;
                 var channel = _config.CurrentValue.SlackChannel;
-                using var response = await _httpClient.PostAsJsonAsync(
-                    "/api/chat.postMessage",
-                    new
-                    {
-                        channel = _config.CurrentValue.SlackChannel,
-                        text = text,
-                        mrkdwn = true,
-                        // thread_ts - we will use this to update the Slack alert when mitigations have been made (not here though)
-                    },
-                    cancellationToken
-                );
-
-                var slackResponse = await response.Content.ReadFromJsonAsync<SlackResponse>(cancellationToken);
-
-                if (slackResponse is SlackErrorResponse error)
+                try
                 {
-                    _logger.LogError("Failed to send alert to Slack: {Error}", error.Error);
+                    using var response = await _httpClient.PostAsJsonAsync(
+                        "/api/chat.postMessage",
+                        new
+                        {
+                            channel = _config.CurrentValue.SlackChannel,
+                            text = text,
+                            mrkdwn = true,
+                            // thread_ts - we will use this to update the Slack alert when mitigations have been made (not here though)
+                        },
+                        cancellationToken
+                    );
+
+                    if (response.StatusCode == HttpStatusCode.TooManyRequests)
+                    {
+                        _logger.LogWarning("Slack rate limit exceeded, will try again later");
+                        return null;
+                    }
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        _logger.LogError(
+                            "Failed to send alert to Slack: {StatusCode} {Reason}",
+                            response.StatusCode,
+                            response.ReasonPhrase
+                        );
+                        return null;
+                    }
+
+                    var slackResponse = await response.Content.ReadFromJsonAsync<SlackResponse>(cancellationToken);
+
+                    if (slackResponse is SlackErrorResponse error)
+                    {
+                        _logger.LogError("Failed to send alert to Slack: {Error}", error.Error);
+                        return null;
+                    }
+                    else if (slackResponse is SlackOkResponse ok)
+                    {
+                        _logger.LogInformation(
+                            "Alert sent to Slack: '{Ts}' for telemetry ID '{TelemetryId}'",
+                            ok.Ts,
+                            item.Id
+                        );
+                        return alert with
+                        {
+                            State = AlertState.Alerted,
+                            Data = alertData with { Message = text, Channel = channel, ThreadTs = ok.Ts },
+                        };
+                    }
+                    else
+                        throw new InvalidOperationException($"Unknown Slack response: {slackResponse}");
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogError(ex, "Failed to send alert to Slack");
                     return null;
                 }
-                else if (slackResponse is SlackOkResponse ok)
-                {
-                    _logger.LogInformation(
-                        "Alert sent to Slack: '{Ts}' for telemetry ID '{TelemetryId}'",
-                        ok.Ts,
-                        item.Id
-                    );
-                    return alert with
-                    {
-                        State = AlertState.Alerted,
-                        Data = alertData with { Message = text, Channel = channel, ThreadTs = ok.Ts },
-                    };
-                }
-                else
-                    throw new InvalidOperationException($"Unknown Slack response: {slackResponse}");
             }
             default:
                 throw new InvalidOperationException($"Unknown telemetry data: {item.Data}");

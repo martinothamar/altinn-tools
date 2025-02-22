@@ -83,7 +83,7 @@ internal sealed class Orchestrator(
 
         try
         {
-            await using var handle = await locking.Lock(DistributedLockName.Orchestrator, cancellationToken);
+            await using var handle = await _locking.Lock(DistributedLockName.Orchestrator, cancellationToken);
             if (handle.HandleLostToken.CanBeCanceled)
             {
                 _logger.LogInformation("Will monitor for lost orchestrator lock");

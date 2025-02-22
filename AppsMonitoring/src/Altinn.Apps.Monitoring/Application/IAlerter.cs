@@ -7,7 +7,7 @@ public sealed record AlerterEvent
 {
     public required TelemetryEntity Item { get; init; }
     public required AlertEntity AlertBefore { get; init; }
-    public required AlertEntity AlertAfter { get; init; }
+    public required AlertEntity? AlertAfter { get; init; }
 }
 
 public interface IAlerter : IHostedService

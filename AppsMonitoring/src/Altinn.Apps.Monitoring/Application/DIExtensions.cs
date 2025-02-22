@@ -39,10 +39,13 @@ internal static class DIExtensions
         builder.Services.AddHostedService<Migrator>();
         // 2. Seed db
         builder.Services.TryAddSingleton<Seeder>();
-        builder.Services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<Seeder>());
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<Seeder>());
         // 3. Run the orchestrator (main loop)
         builder.Services.TryAddSingleton<Orchestrator>();
-        builder.Services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<Orchestrator>());
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<Orchestrator>());
+        // 4. Slack alerting
+        builder.Services.TryAddSingleton<IAlerter, SlackAlerter>();
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<IAlerter>());
 
         // Database services
         var connString = builder.Configuration.GetSection(nameof(AppConfiguration))[
@@ -78,10 +81,6 @@ internal static class DIExtensions
             sp.GetRequiredService<AzureServiceOwnerMonitorAdapter>()
         );
         builder.Services.TryAddSingleton<IQueryLoader, StaticQueryLoader>();
-
-        // Slack
-        builder.Services.TryAddSingleton<IAlerter, SlackAlerter>();
-        builder.Services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<IAlerter>());
 
         return builder;
     }

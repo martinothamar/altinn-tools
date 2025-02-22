@@ -13,7 +13,8 @@
           AppVersion: 8.0.8,
           TimeGenerated: 2025-02-15T14:51:04.906736Z,
           TimeIngested: 2025-02-19T07:34:32.420042Z,
-          Seeded: true
+          Seeded: true,
+          Data: {Scrubbed}
         },
         {
           Id: 2,
@@ -23,7 +24,8 @@
           AppVersion: 6.0.35,
           TimeGenerated: 2025-02-19T08:29:04.386517Z,
           TimeIngested: 2025-02-19T08:34:32.406732Z,
-          Seeded: true
+          Seeded: true,
+          Data: {Scrubbed}
         },
         {
           Id: 3,
@@ -33,7 +35,8 @@
           AppVersion: 6.0.26,
           TimeGenerated: 2025-02-19T16:07:44.720544Z,
           TimeIngested: 2025-02-19T16:00:13.785543Z,
-          Seeded: true
+          Seeded: true,
+          Data: {Scrubbed}
         }
       ],
       Queries: []
@@ -59,7 +62,8 @@
               AppVersion: 8.0.8,
               TimeGenerated: 2025-02-15T14:51:04.906736Z,
               TimeIngested: 2025-02-20T12:00:05Z,
-              Seeded: false
+              Seeded: false,
+              Data: {Scrubbed}
             },
             {
               ExtId: 75563ff0b3251e04c70362c5a3495174-90c159bde9b1a6c2,
@@ -68,7 +72,8 @@
               AppVersion: 8.0.8,
               TimeGenerated: 2025-02-15T14:56:04.906736Z,
               TimeIngested: 2025-02-20T12:00:05Z,
-              Seeded: false
+              Seeded: false,
+              Data: {Scrubbed}
             }
           ]
         }
@@ -84,7 +89,8 @@
           AppVersion: 6.0.35,
           TimeGenerated: 2025-02-19T08:29:04.386517Z,
           TimeIngested: 2025-02-19T08:34:32.406732Z,
-          Seeded: true
+          Seeded: true,
+          Data: {Scrubbed}
         },
         {
           Id: 3,
@@ -94,7 +100,8 @@
           AppVersion: 6.0.26,
           TimeGenerated: 2025-02-19T16:07:44.720544Z,
           TimeIngested: 2025-02-19T16:00:13.785543Z,
-          Seeded: true
+          Seeded: true,
+          Data: {Scrubbed}
         },
         {
           Id: 1,
@@ -105,7 +112,8 @@
           TimeGenerated: 2025-02-15T14:51:04.906736Z,
           TimeIngested: 2025-02-19T07:34:32.420042Z,
           DupeCount: 1,
-          Seeded: true
+          Seeded: true,
+          Data: {Scrubbed}
         },
         {
           Id: 5,
@@ -115,7 +123,8 @@
           AppVersion: 8.0.8,
           TimeGenerated: 2025-02-15T14:56:04.906736Z,
           TimeIngested: 2025-02-20T12:00:05Z,
-          Seeded: false
+          Seeded: false,
+          Data: {Scrubbed}
         }
       ],
       Queries: [

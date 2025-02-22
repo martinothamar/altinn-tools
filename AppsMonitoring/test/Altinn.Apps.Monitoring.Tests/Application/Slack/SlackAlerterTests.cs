@@ -9,6 +9,8 @@ using Microsoft.Extensions.Time.Testing;
 using NodaTime.Text;
 using WireMock.RequestBuilders;
 using WireMock.ResponseBuilders;
+using WireMock.Server;
+using Xunit.Sdk;
 
 namespace Altinn.Apps.Monitoring.Tests.Application.Slack;
 
@@ -29,95 +31,171 @@ public class SlackAlerterTests
         }
         """;
 
-    [Fact]
-    public async Task Test_Alerting()
+    private static readonly IRequestBuilder _slackChatPostMessageRequest = Request
+        .Create()
+        .WithPath("/api/chat.postMessage")
+        .WithHeader("Authorization", "Bearer Secret!")
+        .UsingPost();
+
+    // IXunitSerializable makes each test case appear in test explorer
+    // Source: https://github.com/xunit/xunit/issues/429#issuecomment-108187109
+    // We put this delegate dictionary here to avoid serialization, and only put
+    // serializable stuff in the memberdata/test cases below
+    private static readonly Dictionary<string, Action<WireMockServer>> _mockServerConfigurations = new()
+    {
+        ["200-ok"] = server =>
+            server
+                .Given(_slackChatPostMessageRequest)
+                .RespondWith(Response.Create().WithStatusCode(200).WithBody(_okPayload)),
+        ["200-error"] = server =>
+            server
+                .Given(_slackChatPostMessageRequest)
+                .RespondWith(Response.Create().WithStatusCode(200).WithBody(_errorPayload)),
+        ["500-error"] = server =>
+            server.Given(_slackChatPostMessageRequest).RespondWith(Response.Create().WithStatusCode(500)),
+        ["429-ratelimited"] = server =>
+            server.Given(_slackChatPostMessageRequest).RespondWith(Response.Create().WithStatusCode(429)),
+        ["500-error-then-ok"] = server =>
+        {
+            server
+                .Given(_slackChatPostMessageRequest)
+                .InScenario("recovery-from-500")
+                .WillSetStateTo("error")
+                .RespondWith(Response.Create().WithStatusCode(500));
+            server
+                .Given(_slackChatPostMessageRequest)
+                .InScenario("recovery-from-500")
+                .WhenStateIs("error")
+                .WillSetStateTo("ok")
+                .RespondWith(Response.Create().WithStatusCode(200).WithBody(_okPayload));
+        },
+        ["429-ratelimited-then-ok"] = server =>
+        {
+            server
+                .Given(_slackChatPostMessageRequest)
+                .InScenario("recovery-from-429")
+                .WillSetStateTo("error")
+                .RespondWith(Response.Create().WithStatusCode(429));
+            server
+                .Given(_slackChatPostMessageRequest)
+                .InScenario("recovery-from-429")
+                .WhenStateIs("error")
+                .WillSetStateTo("ok")
+                .RespondWith(Response.Create().WithStatusCode(200).WithBody(_okPayload));
+        },
+        ["500-error-4-times-then-ok"] = server =>
+        {
+            server
+                .Given(_slackChatPostMessageRequest)
+                .InScenario("recovery-from-500-4-times")
+                .WillSetStateTo("error", 4)
+                .RespondWith(Response.Create().WithStatusCode(500));
+            server
+                .Given(_slackChatPostMessageRequest)
+                .InScenario("recovery-from-500-4-times")
+                .WhenStateIs("error")
+                .WillSetStateTo("ok")
+                .RespondWith(Response.Create().WithStatusCode(200).WithBody(_okPayload));
+        },
+    };
+
+    public static TheoryData<string, int> SlackApiParameters =>
+        new TheoryData<string, int>()
+        {
+            { "200-ok", 0 },
+            { "200-error", 0 },
+            { "500-error", 0 },
+            { "429-ratelimited", 0 },
+            // We only fail once here, so HttpClient retries (up to 3) will make it recover
+            { "500-error-then-ok", 0 },
+            { "429-ratelimited-then-ok", 0 },
+            // HttpClient should retry 3 times internally,
+            // but then during the second poll iteration we should succeed.
+            // So we expecte 2 alerter events (where the latter succeeds)
+            { "500-error-4-times-then-ok", 1 },
+        };
+
+    [Theory]
+    [MemberData(nameof(SlackApiParameters))]
+    public async Task Test_Alerting(string @case, int waitForRetryEvents)
     {
         ServiceOwner[] serviceOwners = [ServiceOwner.Parse("skd")];
-        var (fixture, startSignal, pollInterval, latency, queries, cancellationToken) =
-            await OrchestratorTests.CreateFixture(
-                (services, fixture) =>
+        await using var fixture = await OrchestratorFixture.Create(
+            (services, fixture) =>
+            {
+                _mockServerConfigurations[@case](fixture.MockServer);
+
+                var timeProvider = new FakeTimeProvider(Instant.FromUtc(2025, 2, 20, 12, 0, 0).ToDateTimeOffset());
+                services.AddSingleton<TimeProvider>(timeProvider);
+                services.Configure<AppConfiguration>(config =>
                 {
-                    fixture
-                        .MockServer.Given(
-                            Request
-                                .Create()
-                                .WithPath("/api/chat.postMessage")
-                                .WithHeader("Authorization", "Bearer Secret!")
-                                .UsingPost()
-                        )
-                        .RespondWith(Response.Create().WithStatusCode(200).WithBody(_okPayload));
+                    config.DisableAlerter = false;
+                    config.SlackAccessToken = "Secret!";
+                    config.SlackChannel = "C01UJ9G";
+                    config.SlackHost =
+                        fixture.MockServer.Url ?? throw new InvalidOperationException("Mock server URL is null");
 
-                    var timeProvider = new FakeTimeProvider(Instant.FromUtc(2025, 2, 20, 12, 0, 0).ToDateTimeOffset());
-                    services.AddSingleton<TimeProvider>(timeProvider);
-                    services.Configure<AppConfiguration>(config =>
+                    config.DisableSeeder = false;
+                    config.SeedSqliteDbPath = Path.Combine("data", "mini.db");
+                });
+
+                services.Configure<FakeConfig>(config =>
+                {
+                    config.ServiceOwnersDiscovery = _ => serviceOwners;
+                    config.TelemetryGenerator = sp =>
                     {
-                        config.DisableAlerter = false;
-                        config.SlackAccessToken = "Secret!";
-                        config.SlackChannel = "C01UJ9G";
-                        config.SlackHost =
-                            fixture.MockServer.Url ?? throw new InvalidOperationException("Mock server URL is null");
+                        var timeProvider = sp.GetRequiredService<TimeProvider>();
+                        var options = sp.GetRequiredService<IOptions<AppConfiguration>>().Value;
+                        long id = 1;
 
-                        config.DisableSeeder = false;
-                        config.SeedSqliteDbPath = Path.Combine("data", "mini.db");
-                    });
+                        return
+                        [
+                            TestData.GenerateMiniDbTrace(
+                                serviceOwners[0],
+                                ref id,
+                                InstantPattern.ExtendedIso.Parse("2025-02-15T14:51:04.906736Z").Value,
+                                timeProvider
+                            ), // Should match a record from the seed DB, expect no alert from this
+                            TestData.GenerateMiniDbTrace(
+                                serviceOwners[0],
+                                ref id,
+                                InstantPattern.ExtendedIso.Parse("2025-02-15T14:56:04.906736Z").Value,
+                                timeProvider
+                            ), // Different span ID, should not dedupe, so we expect alert for this one
+                        ];
+                    };
+                });
+            }
+        );
+        var (hostFixture, startSignal, adapterSemaphore, pollInterval, latency, queries, cancellationToken) = fixture;
 
-                    services.Configure<FakeConfig>(config =>
-                    {
-                        config.ServiceOwnersDiscovery = _ => serviceOwners;
-                        config.TelemetryGenerator = sp =>
-                        {
-                            var timeProvider = sp.GetRequiredService<TimeProvider>();
-                            var options = sp.GetRequiredService<IOptions<AppConfiguration>>().Value;
-                            long id = 1;
+        var timeProvider = hostFixture.TimeProvider;
+        var repository = hostFixture.Repository;
+        var orchestratorResults = hostFixture.Orchestrator.Results;
+        var alerterResults = hostFixture.Alerter.Results;
 
-                            return
-                            [
-                                TestData.GenerateMiniDbTrace(
-                                    serviceOwners[0],
-                                    ref id,
-                                    InstantPattern.ExtendedIso.Parse("2025-02-15T14:51:04.906736Z").Value,
-                                    timeProvider
-                                ), // Should match a record from the seed DB, expect no alert from this
-                                TestData.GenerateMiniDbTrace(
-                                    serviceOwners[0],
-                                    ref id,
-                                    InstantPattern.ExtendedIso.Parse("2025-02-15T14:56:04.906736Z").Value,
-                                    timeProvider
-                                ), // Different span ID, should not dedupe, so we expect alert for this one
-                            ];
-                        };
-                    });
-                }
-            );
-        var timeProvider = fixture.TimeProvider;
-        var repository = fixture.Repository;
-        var orchestratorResults = fixture.Orchestrator.Results;
-        var alerterResults = fixture.Alerter.Results;
-
-        var total = queries.Count * serviceOwners.Length;
-        var start = timeProvider.GetCurrentInstant();
         List<ServiceOwnerQueryResult> queryResults = new();
         List<AlerterEvent> alerterEvents = new();
         {
-            // Let orchestrator insert some stuff
+            // Let orchestrator start work
             startSignal.SetResult();
 
-            await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken); // Let all threads reach query delay
-            timeProvider.Advance(latency * queries.Count); // Let adapters progress
+            var expectedQueryResults = queries.Count * serviceOwners.Length;
+            // Wait until all adapters are querying, then advance time
+            for (int i = 0; i < expectedQueryResults; i++)
+            {
+                var wasSignaled = await adapterSemaphore.WaitAsync(TimeSpan.FromSeconds(2), cancellationToken);
+                Assert.True(wasSignaled);
+            }
+            timeProvider.Advance(latency);
 
-            for (int i = 0; i < total; i++)
+            for (int i = 0; i < expectedQueryResults; i++)
             {
                 var result = await orchestratorResults.ReadAsync(cancellationToken);
                 queryResults.Add(result);
             }
         }
         {
-            var now = timeProvider.GetCurrentInstant();
-            // Let alerter pick up the telemetry
-            var alerterPollInterval = Duration.FromTimeSpan(pollInterval) / 2;
-            var remainingUntilNextAlerterTick = alerterPollInterval - (now - start);
-            timeProvider.Advance(remainingUntilNextAlerterTick.ToTimeSpan());
-
             // We can just fetch all telemetry, since we haven't alerted anything yet,
             // only the seeded ones need to be filtered out
             var telemetry = await repository.ListTelemetry(cancellationToken: cancellationToken);
@@ -130,8 +208,16 @@ public class SlackAlerterTests
 
                 // Since we don't have mitigation yet, we only expect 1 event
                 // per telemetry item
-                var result = await alerterResults.ReadAsync(cancellationToken);
-                alerterEvents.Add(result);
+                for (int j = 0; j < waitForRetryEvents + 1; j++)
+                {
+                    AlerterEvent? result;
+                    while (!alerterResults.TryRead(out result))
+                    {
+                        await Task.Delay(10, cancellationToken);
+                        timeProvider.Advance(TimeSpan.FromSeconds(2)); // Initial HttpClient retry delay is 2s
+                    }
+                    alerterEvents.Add(result);
+                }
             }
         }
 
@@ -139,8 +225,11 @@ public class SlackAlerterTests
             .AutoVerify()
             .ScrubMember<TelemetryEntity>(e => e.Data)
             .DontScrubDateTimes()
-            .DontIgnoreEmptyCollections();
+            .DontIgnoreEmptyCollections()
+            .UseParameters(@case, waitForRetryEvents);
     }
+
+    private sealed record State(IReadOnlyList<TelemetryEntity> Telemetry, IReadOnlyList<AlertEntity> Alerts);
 
     private static async ValueTask<object> NewSnapshot(
         IReadOnlyList<ServiceOwnerQueryResult> queryResults,
@@ -154,7 +243,7 @@ public class SlackAlerterTests
         {
             QueryResults = queryResults,
             AlerterEvents = alerterEvents,
-            State = (telemetry, alerts),
+            State = new State(telemetry, alerts),
         };
     }
 

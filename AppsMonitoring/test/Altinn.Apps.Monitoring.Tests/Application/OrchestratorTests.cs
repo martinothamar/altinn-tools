@@ -8,60 +8,8 @@ using NodaTime.Text;
 
 namespace Altinn.Apps.Monitoring.Tests.Application;
 
-public sealed record FakeConfig
-{
-    public TimeSpan Latency { get; set; }
-    public Func<IServiceProvider, IReadOnlyList<ServiceOwner>>? ServiceOwnersDiscovery { get; set; }
-    public Func<IServiceProvider, TelemetryEntity[]>? TelemetryGenerator { get; set; }
-}
-
 public class OrchestratorTests
 {
-    internal static async Task<(
-        HostFixture Fixture,
-        TaskCompletionSource StartSignal,
-        TimeSpan PollInterval,
-        TimeSpan Latency,
-        IReadOnlyList<Query> Queries,
-        CancellationToken CancellationToken
-    )> CreateFixture(Action<IServiceCollection, HostFixture> configureServices)
-    {
-        var cancellationToken = TestContext.Current.CancellationToken;
-
-        var startSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var pollInterval = TimeSpan.FromMinutes(10);
-        var latency = TimeSpan.FromSeconds(5);
-        var fixture = await HostFixture.Create(
-            (services, fixture) =>
-            {
-                services.Configure<FakeConfig>(config => config.Latency = latency);
-                services.AddSingleton<IServiceOwnerDiscovery, FakeServiceOwnerDiscovery>();
-                services.AddSingleton<IQueryLoader, FakeQueryLoader>();
-                services.AddSingleton<FakeTelemetryAdapter>();
-                services.AddSingleton<IServiceOwnerLogsAdapter>(sp => sp.GetRequiredService<FakeTelemetryAdapter>());
-                services.AddSingleton<IServiceOwnerTraceAdapter>(sp => sp.GetRequiredService<FakeTelemetryAdapter>());
-                services.AddSingleton<IServiceOwnerMetricsAdapter>(sp => sp.GetRequiredService<FakeTelemetryAdapter>());
-
-                services.Configure<AppConfiguration>(options =>
-                {
-                    options.DisableOrchestrator = false;
-                    options.OrchestratorStartSignal = startSignal;
-                    options.PollInterval = pollInterval;
-                });
-
-                configureServices(services, fixture);
-            }
-        );
-
-        using var _ = await fixture.Start(cancellationToken);
-
-        var queryLoader = fixture.QueryLoader;
-
-        var queries = await queryLoader.Load(cancellationToken);
-
-        return (fixture, startSignal, pollInterval, latency, queries, cancellationToken);
-    }
-
     private static async Task<(
         IReadOnlyList<TelemetryEntity> Telemetry,
         IReadOnlyList<QueryStateEntity> Queries
@@ -72,40 +20,11 @@ public class OrchestratorTests
         return (telemetry, queries);
     }
 
-    private static Change NewChange(
-        string desc,
-        Instant start,
-        Instant end,
-        (IReadOnlyList<TelemetryEntity> Telemetry, IReadOnlyList<QueryStateEntity> Queries) stateBefore,
-        IReadOnlyList<ServiceOwnerQueryResult> inputTelemetry,
-        (IReadOnlyList<TelemetryEntity> Telemetry, IReadOnlyList<QueryStateEntity> Queries) stateAfter
-    )
-    {
-        // Reset data to make snapshots a little less noisy
-        var telemetryBefore = stateBefore.Telemetry.Select(t => t with { Data = null! }).ToArray();
-        var telemetryAfter = stateAfter.Telemetry.Select(t => t with { Data = null! }).ToArray();
-        var input = inputTelemetry
-            .Select(r =>
-            {
-                var telemetry = r.Telemetry.Select(t => t with { Data = null! }).ToArray();
-                return r with { Telemetry = telemetry };
-            })
-            .ToArray();
-        return new Change(
-            desc,
-            start,
-            end,
-            new State(telemetryBefore, stateBefore.Queries),
-            new(input),
-            new State(telemetryAfter, stateAfter.Queries)
-        );
-    }
-
     [Fact]
     public async Task Test_Query_Progression_No_Items()
     {
         ServiceOwner[] serviceOwners = [ServiceOwner.Parse("one")];
-        var (fixture, startSignal, pollInterval, latency, queries, cancellationToken) = await CreateFixture(
+        await using var fixture = await OrchestratorFixture.Create(
             (services, _) =>
             {
                 services.Configure<FakeConfig>(config =>
@@ -114,26 +33,32 @@ public class OrchestratorTests
                 });
             }
         );
+        var (hostFixture, startSignal, adapterSemaphore, pollInterval, latency, queries, cancellationToken) = fixture;
 
-        var timeProvider = fixture.TimeProvider;
-        var repository = fixture.Repository;
-        var results = fixture.Orchestrator.Results;
+        var timeProvider = hostFixture.TimeProvider;
+        var repository = hostFixture.Repository;
+        var results = hostFixture.Orchestrator.Results;
 
         var changes = new List<Change>();
         IReadOnlyList<TelemetryEntity> telemetryAfter;
         IReadOnlyList<QueryStateEntity> queryStateAfter;
-        var total = queries.Count * serviceOwners.Length;
+        var expectedQueryResults = queries.Count * serviceOwners.Length;
         {
             // Initial loop iterations (discovery and querying)
             var start = timeProvider.GetCurrentInstant();
             var (telemetryBefore, queryStateBefore) = await GetState(repository, cancellationToken);
             startSignal.SetResult();
 
-            await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken); // Let all threads reach query delay
-            timeProvider.Advance(latency * queries.Count); // Let adapters progress
+            // Wait until all adapters are querying, then advance time
+            for (int i = 0; i < expectedQueryResults; i++)
+            {
+                var wasSignaled = await adapterSemaphore.WaitAsync(TimeSpan.FromSeconds(2), cancellationToken);
+                Assert.True(wasSignaled);
+            }
+            timeProvider.Advance(latency);
 
             List<ServiceOwnerQueryResult> queryResults = new();
-            for (int i = 0; i < total; i++)
+            for (int i = 0; i < expectedQueryResults; i++)
             {
                 var result = await results.ReadAsync(cancellationToken);
                 queryResults.Add(result);
@@ -142,13 +67,13 @@ public class OrchestratorTests
             (telemetryAfter, queryStateAfter) = await GetState(repository, cancellationToken);
             var end = timeProvider.GetCurrentInstant();
             changes.Add(
-                NewChange(
+                new Change(
                     "Iteration 1 - no records",
                     start,
                     end,
-                    (telemetryBefore, queryStateBefore),
-                    queryResults,
-                    (telemetryAfter, queryStateAfter)
+                    new(telemetryBefore, queryStateBefore),
+                    new(queryResults),
+                    new(telemetryAfter, queryStateAfter)
                 )
             );
         }
@@ -158,11 +83,16 @@ public class OrchestratorTests
             var start = timeProvider.GetCurrentInstant();
             var (telemetryBefore, queryStateBefore) = (telemetryAfter, queryStateAfter);
 
-            await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken); // Let all threads reach query delay
-            timeProvider.Advance(latency * queries.Count); // Let adapters progress
+            // Wait until all adapters are querying, then advance time
+            for (int i = 0; i < expectedQueryResults; i++)
+            {
+                var wasSignaled = await adapterSemaphore.WaitAsync(TimeSpan.FromSeconds(2), cancellationToken);
+                Assert.True(wasSignaled);
+            }
+            timeProvider.Advance(latency);
 
             List<ServiceOwnerQueryResult> queryResults = new();
-            for (int i = 0; i < total; i++)
+            for (int i = 0; i < expectedQueryResults; i++)
             {
                 var result = await results.ReadAsync(cancellationToken);
                 queryResults.Add(result);
@@ -171,25 +101,29 @@ public class OrchestratorTests
             (telemetryAfter, queryStateAfter) = await GetState(repository, cancellationToken);
             var end = timeProvider.GetCurrentInstant();
             changes.Add(
-                NewChange(
+                new Change(
                     "Iteration 2 - no records",
                     start,
                     end,
-                    (telemetryBefore, queryStateBefore),
-                    queryResults,
-                    (telemetryAfter, queryStateAfter)
+                    new(telemetryBefore, queryStateBefore),
+                    new(queryResults),
+                    new(telemetryAfter, queryStateAfter)
                 )
             );
         }
 
-        await Verify(changes).AutoVerify().DontScrubDateTimes().DontIgnoreEmptyCollections();
+        await Verify(changes)
+            .AutoVerify()
+            .ScrubMember<TelemetryEntity>(e => e.Data)
+            .DontScrubDateTimes()
+            .DontIgnoreEmptyCollections();
     }
 
     [Fact]
     public async Task Test_Query_Progression_With_Items()
     {
         ServiceOwner[] serviceOwners = [ServiceOwner.Parse("one")];
-        var (fixture, startSignal, pollInterval, latency, queries, cancellationToken) = await CreateFixture(
+        await using var fixture = await OrchestratorFixture.Create(
             (services, _) =>
                 services.Configure<FakeConfig>(config =>
                 {
@@ -233,25 +167,32 @@ public class OrchestratorTests
                     };
                 })
         );
-        var timeProvider = fixture.TimeProvider;
-        var repository = fixture.Repository;
-        var results = fixture.Orchestrator.Results;
+        var (hostFixture, startSignal, adapterSemaphore, pollInterval, latency, queries, cancellationToken) = fixture;
+
+        var timeProvider = hostFixture.TimeProvider;
+        var repository = hostFixture.Repository;
+        var results = hostFixture.Orchestrator.Results;
 
         var changes = new List<Change>();
         IReadOnlyList<TelemetryEntity> telemetryAfter;
         IReadOnlyList<QueryStateEntity> queryStateAfter;
-        var total = queries.Count * serviceOwners.Length;
+        var expectedQueryResults = queries.Count * serviceOwners.Length;
         {
             // Initial loop iterations (discovery and querying)
             var start = timeProvider.GetCurrentInstant();
             var (telemetryBefore, queryStateBefore) = await GetState(repository, cancellationToken);
             startSignal.SetResult();
 
-            await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken); // Let all threads reach query delay
-            timeProvider.Advance(latency * queries.Count); // Let adapters progress
+            // Wait until all adapters are querying, then advance time
+            for (int i = 0; i < expectedQueryResults; i++)
+            {
+                var wasSignaled = await adapterSemaphore.WaitAsync(TimeSpan.FromSeconds(2), cancellationToken);
+                Assert.True(wasSignaled);
+            }
+            timeProvider.Advance(latency);
 
             List<ServiceOwnerQueryResult> queryResults = new();
-            for (int i = 0; i < total; i++)
+            for (int i = 0; i < expectedQueryResults; i++)
             {
                 var result = await results.ReadAsync(cancellationToken);
                 queryResults.Add(result);
@@ -260,13 +201,13 @@ public class OrchestratorTests
             (telemetryAfter, queryStateAfter) = await GetState(repository, cancellationToken);
             var end = timeProvider.GetCurrentInstant();
             changes.Add(
-                NewChange(
+                new Change(
                     "Iteration 1 - 2 records",
                     start,
                     end,
-                    (telemetryBefore, queryStateBefore),
-                    queryResults,
-                    (telemetryAfter, queryStateAfter)
+                    new(telemetryBefore, queryStateBefore),
+                    new(queryResults),
+                    new(telemetryAfter, queryStateAfter)
                 )
             );
         }
@@ -276,11 +217,16 @@ public class OrchestratorTests
             var start = timeProvider.GetCurrentInstant();
             var (telemetryBefore, queryStateBefore) = (telemetryAfter, queryStateAfter);
 
-            await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken); // Let all threads reach query delay
-            timeProvider.Advance(latency * queries.Count); // Let adapters progress
+            // Wait until all adapters are querying, then advance time
+            for (int i = 0; i < expectedQueryResults; i++)
+            {
+                var wasSignaled = await adapterSemaphore.WaitAsync(TimeSpan.FromSeconds(2), cancellationToken);
+                Assert.True(wasSignaled);
+            }
+            timeProvider.Advance(latency);
 
             List<ServiceOwnerQueryResult> queryResults = new();
-            for (int i = 0; i < total; i++)
+            for (int i = 0; i < expectedQueryResults; i++)
             {
                 var result = await results.ReadAsync(cancellationToken);
                 queryResults.Add(result);
@@ -289,25 +235,29 @@ public class OrchestratorTests
             (telemetryAfter, queryStateAfter) = await GetState(repository, cancellationToken);
             var end = timeProvider.GetCurrentInstant();
             changes.Add(
-                NewChange(
+                new Change(
                     "Iteration 2 - 2 records",
                     start,
                     end,
-                    (telemetryBefore, queryStateBefore),
-                    queryResults,
-                    (telemetryAfter, queryStateAfter)
+                    new(telemetryBefore, queryStateBefore),
+                    new(queryResults),
+                    new(telemetryAfter, queryStateAfter)
                 )
             );
         }
 
-        await Verify(changes).AutoVerify().DontScrubDateTimes().DontIgnoreEmptyCollections();
+        await Verify(changes)
+            .AutoVerify()
+            .ScrubMember<TelemetryEntity>(e => e.Data)
+            .DontScrubDateTimes()
+            .DontIgnoreEmptyCollections();
     }
 
     [Fact]
     public async Task Test_Querying_After_Seeding()
     {
         ServiceOwner[] serviceOwners = [ServiceOwner.Parse("skd")];
-        var (fixture, startSignal, pollInterval, latency, queries, cancellationToken) = await CreateFixture(
+        await using var fixture = await OrchestratorFixture.Create(
             (services, _) =>
             {
                 var timeProvider = new FakeTimeProvider(Instant.FromUtc(2025, 2, 20, 12, 0, 0).ToDateTimeOffset());
@@ -345,28 +295,35 @@ public class OrchestratorTests
                 });
             }
         );
-        var timeProvider = fixture.TimeProvider;
-        var repository = fixture.Repository;
-        var results = fixture.Orchestrator.Results;
-        var seeder = fixture.Seeder;
+        var (hostFixture, startSignal, adapterSemaphore, pollInterval, latency, queries, cancellationToken) = fixture;
+
+        var timeProvider = hostFixture.TimeProvider;
+        var repository = hostFixture.Repository;
+        var results = hostFixture.Orchestrator.Results;
+        var seeder = hostFixture.Seeder;
 
         await seeder.Completion;
 
         var changes = new List<Change>();
         IReadOnlyList<TelemetryEntity> telemetryAfter;
         IReadOnlyList<QueryStateEntity> queryStateAfter;
-        var total = queries.Count * serviceOwners.Length;
+        var expectedQueryResults = queries.Count * serviceOwners.Length;
         {
             // Initial loop iterations (discovery and querying)
             var start = timeProvider.GetCurrentInstant();
             var (telemetryBefore, queryStateBefore) = await GetState(repository, cancellationToken);
             startSignal.SetResult();
 
-            await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken); // Let all threads reach query delay
-            timeProvider.Advance(latency * queries.Count); // Let adapters progress
+            // Wait until all adapters are querying, then advance time
+            for (int i = 0; i < expectedQueryResults; i++)
+            {
+                var wasSignaled = await adapterSemaphore.WaitAsync(TimeSpan.FromSeconds(2), cancellationToken);
+                Assert.True(wasSignaled);
+            }
+            timeProvider.Advance(latency);
 
             List<ServiceOwnerQueryResult> queryResults = new();
-            for (int i = 0; i < total; i++)
+            for (int i = 0; i < expectedQueryResults; i++)
             {
                 var result = await results.ReadAsync(cancellationToken);
                 queryResults.Add(result);
@@ -375,18 +332,22 @@ public class OrchestratorTests
             (telemetryAfter, queryStateAfter) = await GetState(repository, cancellationToken);
             var end = timeProvider.GetCurrentInstant();
             changes.Add(
-                NewChange(
+                new Change(
                     "Iteration 1 - dupe += 1",
                     start,
                     end,
-                    (telemetryBefore, queryStateBefore),
-                    queryResults,
-                    (telemetryAfter, queryStateAfter)
+                    new(telemetryBefore, queryStateBefore),
+                    new(queryResults),
+                    new(telemetryAfter, queryStateAfter)
                 )
             );
         }
 
-        await Verify(changes).AutoVerify().DontScrubDateTimes().DontIgnoreEmptyCollections();
+        await Verify(changes)
+            .AutoVerify()
+            .ScrubMember<TelemetryEntity>(e => e.Data)
+            .DontScrubDateTimes()
+            .DontIgnoreEmptyCollections();
     }
 
     private sealed record Change(
@@ -401,77 +362,4 @@ public class OrchestratorTests
     private sealed record State(IReadOnlyList<TelemetryEntity> Telemetry, IReadOnlyList<QueryStateEntity> Queries);
 
     private sealed record Input(IReadOnlyList<ServiceOwnerQueryResult> ReportedResults);
-
-    private sealed class FakeServiceOwnerDiscovery(IOptions<FakeConfig> config, IServiceProvider serviceProvider)
-        : IServiceOwnerDiscovery
-    {
-        private readonly FakeConfig _config = config.Value;
-        private readonly IServiceProvider _serviceProvider = serviceProvider;
-
-        public ValueTask<IReadOnlyList<ServiceOwner>> Discover(CancellationToken cancellationToken)
-        {
-            return new(
-                _config.ServiceOwnersDiscovery is not null ? _config.ServiceOwnersDiscovery(_serviceProvider) : []
-            );
-        }
-    }
-
-    private sealed class FakeQueryLoader : IQueryLoader
-    {
-        public ValueTask<IReadOnlyList<Query>> Load(CancellationToken cancellationToken)
-        {
-            IReadOnlyList<Query> queries = [new Query("query", QueryType.Traces, "template-{searchFrom}-{searchTo}")];
-            return new(queries);
-        }
-    }
-
-    private sealed class FakeTelemetryAdapter
-        : IServiceOwnerLogsAdapter,
-            IServiceOwnerTraceAdapter,
-            IServiceOwnerMetricsAdapter
-    {
-        private readonly TimeSpan _latency;
-        private readonly TimeProvider _timeProvider;
-
-        public FakeTelemetryAdapter(
-            IServiceProvider serviceProvider,
-            TimeProvider timeProvider,
-            IOptions<FakeConfig> fakeConfig
-        )
-        {
-            _latency = fakeConfig.Value.Latency;
-            _timeProvider = timeProvider;
-
-            _telemetry = fakeConfig.Value.TelemetryGenerator is not null
-                ? fakeConfig.Value.TelemetryGenerator(serviceProvider)
-                : [];
-        }
-
-        private readonly TelemetryEntity[] _telemetry;
-
-        public async ValueTask<IReadOnlyList<IReadOnlyList<TelemetryEntity>>> Query(
-            ServiceOwner serviceOwner,
-            Query query,
-            Instant from,
-            Instant to,
-            CancellationToken cancellationToken
-        )
-        {
-            await Task.Delay(_latency, _timeProvider, cancellationToken);
-            switch (query.Type)
-            {
-                case QueryType.Traces:
-                {
-                    var table = _telemetry
-                        .Where(t =>
-                            t.ServiceOwner == serviceOwner.Value && t.TimeGenerated > from && t.TimeGenerated <= to
-                        )
-                        .ToArray();
-                    return [table];
-                }
-                default:
-                    throw new Exception("Invalid query type: " + query.Type);
-            }
-        }
-    }
 }
