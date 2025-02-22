@@ -10,7 +10,6 @@ using NodaTime.Text;
 using WireMock.RequestBuilders;
 using WireMock.ResponseBuilders;
 using WireMock.Server;
-using Xunit.Sdk;
 
 namespace Altinn.Apps.Monitoring.Tests.Application.Slack;
 

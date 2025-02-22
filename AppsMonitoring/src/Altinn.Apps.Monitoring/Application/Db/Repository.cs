@@ -6,6 +6,10 @@ namespace Altinn.Apps.Monitoring.Application.Db;
 
 internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource dataSource)
 {
+    // Implementation notes:
+    // * We use non-async `GetFieldValue<>` because we don't use `CommandBehavior.SequentialAccess`,
+    //   so columns/values are buffered when the row read
+
     private readonly ILogger<Repository> _logger = logger;
     private readonly NpgsqlDataSource _dataSource = dataSource;
 
@@ -69,10 +73,7 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
         return count > 0;
     }
 
-    private async ValueTask<TelemetryEntity> ReadTelemetryEntity(
-        NpgsqlDataReader reader,
-        CancellationToken cancellationToken
-    )
+    private static TelemetryEntity ReadTelemetryEntity(NpgsqlDataReader reader)
     {
         return new TelemetryEntity
         {
@@ -109,7 +110,7 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
         var telemetry = new List<TelemetryEntity>(16);
         while (await reader.ReadAsync(cancellationToken))
         {
-            var item = await ReadTelemetryEntity(reader, cancellationToken);
+            var item = ReadTelemetryEntity(reader);
 
             telemetry.Add(item);
         }
@@ -272,7 +273,7 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
 
         // We want
         // * Telemetry items that don't have alerts
-        // * Telemetry items that have alerts that are < Mitigated (TODO: handle mitigation)
+        // * Telemetry items that have alerts that are < Mitigated
 
         await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
@@ -295,7 +296,7 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
 
         while (await reader.ReadAsync(cancellationToken))
         {
-            var telemetry = await ReadTelemetryEntity(reader, cancellationToken);
+            var telemetry = ReadTelemetryEntity(reader);
             var alertId = reader.IsDBNull(10) ? (long?)null : reader.GetFieldValue<long>(10);
             var alert = alertId is null
                 ? null

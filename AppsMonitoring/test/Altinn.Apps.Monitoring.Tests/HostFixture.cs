@@ -3,7 +3,6 @@ using Altinn.Apps.Monitoring.Application.Db;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
-using Meziantou.Extensions.Logging.Xunit.v3;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Time.Testing;
 using Testcontainers.PostgreSql;
