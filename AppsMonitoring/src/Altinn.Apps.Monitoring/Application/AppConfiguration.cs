@@ -14,6 +14,8 @@ internal sealed class AppConfiguration
     public string DbConnectionString { get; set; } = null!;
     public string SeedSqliteDbPath { get; set; } = Path.Combine("data", "data.db");
 
+    public string KeyVaultName { get; set; } = null!;
+
     internal bool DisableOrchestrator { get; set; }
     internal bool DisableSeeder { get; set; }
     internal bool DisableAlerter { get; set; }

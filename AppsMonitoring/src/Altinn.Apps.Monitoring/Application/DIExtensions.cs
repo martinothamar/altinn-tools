@@ -2,8 +2,12 @@ using Altinn.Apps.Monitoring.Application.Azure;
 using Altinn.Apps.Monitoring.Application.Db;
 using Altinn.Apps.Monitoring.Application.DbUp;
 using Altinn.Apps.Monitoring.Application.Slack;
+using Azure.Extensions.AspNetCore.Configuration.Secrets;
+using Azure.Identity;
+using Azure.Monitor.OpenTelemetry.AspNetCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Npgsql;
+using OpenTelemetry;
 
 namespace Altinn.Apps.Monitoring.Application;
 
@@ -11,26 +15,8 @@ internal static class DIExtensions
 {
     public static IHostApplicationBuilder AddApplication(this IHostApplicationBuilder builder)
     {
-        builder.Configuration.AddJsonFile("appsettings.Secret.json", optional: true, reloadOnChange: true);
-        builder
-            .Services.AddOptions<AppConfiguration>()
-            .BindConfiguration(nameof(AppConfiguration))
-            .Validate(config =>
-            {
-                if (config.PollInterval <= TimeSpan.Zero)
-                    return false;
-                if (config.SearchFromDays <= 0)
-                    return false;
-                if (string.IsNullOrWhiteSpace(config.AltinnEnvironment))
-                    return false;
-                if (config.AltinnEnvironment is not "at24" or "tt02" or "prod")
-                    return false;
-                if (string.IsNullOrWhiteSpace(config.DbConnectionString))
-                    return false;
-
-                return true;
-            })
-            .ValidateOnStart();
+        builder.AddConfig();
+        builder.AddOtel();
 
         builder.Services.TryAddSingleton<TimeProvider>(TimeProvider.System);
 
@@ -61,6 +47,7 @@ internal static class DIExtensions
                     .EnableDynamicJson()
                     .ConfigureJsonOptions(Db.Config.JsonOptions)
                     .UseNodaTime()
+                    .ConfigureTracing(o => { })
         );
         builder.Services.TryAddSingleton<Repository>();
         builder.Services.TryAddSingleton<DistributedLocking>();
@@ -82,6 +69,68 @@ internal static class DIExtensions
         );
         builder.Services.TryAddSingleton<IQueryLoader, StaticQueryLoader>();
 
+        return builder;
+    }
+
+    private static IHostApplicationBuilder AddConfig(this IHostApplicationBuilder builder)
+    {
+        builder.Configuration.AddJsonFile("appsettings.Secret.json", optional: true, reloadOnChange: true);
+        builder
+            .Services.AddOptions<AppConfiguration>()
+            .BindConfiguration(nameof(AppConfiguration))
+            .Validate(config =>
+            {
+                if (config.PollInterval <= TimeSpan.Zero)
+                    return false;
+                if (config.SearchFromDays <= 0)
+                    return false;
+                if (string.IsNullOrWhiteSpace(config.AltinnEnvironment))
+                    return false;
+                if (config.AltinnEnvironment is not "at24" or "tt02" or "prod")
+                    return false;
+                if (string.IsNullOrWhiteSpace(config.DbConnectionString))
+                    return false;
+
+                return true;
+            })
+            .ValidateOnStart();
+
+        if (!builder.Environment.IsDevelopment())
+        {
+            var keyVaultName = builder.Configuration.GetSection(nameof(AppConfiguration))[
+                nameof(AppConfiguration.KeyVaultName)
+            ];
+            if (string.IsNullOrWhiteSpace(keyVaultName))
+                throw new InvalidOperationException("Missing key vault name in configuration");
+
+            builder.Configuration.AddAzureKeyVault(
+                new Uri($"https://{keyVaultName}.vault.azure.net/"),
+                new ManagedIdentityCredential(),
+                new AzureKeyVaultConfigurationOptions { ReloadInterval = TimeSpan.FromMinutes(5) }
+            );
+        }
+
+        return builder;
+    }
+
+    private static IHostApplicationBuilder AddOtel(this IHostApplicationBuilder builder)
+    {
+        var otel = builder.Services.AddOpenTelemetry();
+
+        otel.WithMetrics(metrics => metrics.AddMeter("System.Runtime").AddNpgsqlInstrumentation());
+        otel.WithTracing(traces => traces.AddNpgsql());
+
+        if (builder.Environment.IsDevelopment())
+        {
+            otel.UseOtlpExporter();
+        }
+        else
+        {
+            otel.UseAzureMonitor(options =>
+            {
+                options.Credential = new ManagedIdentityCredential();
+            });
+        }
         return builder;
     }
 }
