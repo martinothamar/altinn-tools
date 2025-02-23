@@ -22,9 +22,9 @@ public class OrchestratorTests
 
     internal enum TelemetryGenerator
     {
-        Empty,
-        Multiple,
-        WithSeeder,
+        Empty = 1,
+        Multiple = 2,
+        WithSeeder = 3,
     }
 
     private static readonly Dictionary<

@@ -6,6 +6,7 @@
       },
       Query: {
         Name: query,
+        Type: Traces,
         QueryTemplate: template-{searchFrom}-{searchTo},
         Hash: HpynynzeF9Pk52Vahp477Q==
       },
@@ -49,6 +50,7 @@
         Data: {Scrubbed}
       },
       AlertBefore: {
+        State: Pending,
         TelemetryId: 5,
         Data: {}
       }

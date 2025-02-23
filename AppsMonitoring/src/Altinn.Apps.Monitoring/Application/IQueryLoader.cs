@@ -7,9 +7,9 @@ namespace Altinn.Apps.Monitoring.Application;
 
 internal enum QueryType
 {
-    Traces,
-    Logs,
-    Metrics,
+    Traces = 1,
+    Logs = 2,
+    Metrics = 3,
 }
 
 #pragma warning disable CA1724 // Type name conflicts with namespace name

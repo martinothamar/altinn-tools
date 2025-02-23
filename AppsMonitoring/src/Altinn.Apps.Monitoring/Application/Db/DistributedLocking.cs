@@ -5,10 +5,10 @@ namespace Altinn.Apps.Monitoring.Application.Db;
 
 internal enum DistributedLockName : long
 {
-    DbMigrator,
-    DbSeeder,
-    Orchestrator,
-    Alerter,
+    DbMigrator = 1,
+    DbSeeder = 2,
+    Orchestrator = 3,
+    Alerter = 4,
 }
 
 internal sealed class DistributedLocking(ILogger<DistributedLocking> logger, IOptionsMonitor<AppConfiguration> config)
