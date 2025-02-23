@@ -6,9 +6,9 @@ namespace Altinn.Apps.Monitoring.Application.Db;
 
 internal enum AlertState
 {
-    Pending,
-    Alerted,
-    Mitigated,
+    Pending = 1,
+    Alerted = 2,
+    Mitigated = 3,
 }
 
 internal sealed record AlertEntity

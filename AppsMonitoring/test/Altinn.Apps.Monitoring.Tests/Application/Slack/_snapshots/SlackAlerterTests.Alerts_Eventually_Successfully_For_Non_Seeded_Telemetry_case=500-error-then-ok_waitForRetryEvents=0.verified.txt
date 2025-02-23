@@ -49,6 +49,7 @@
         Data: {Scrubbed}
       },
       AlertBefore: {
+        State: Pending,
         TelemetryId: 5,
         Data: {}
       },

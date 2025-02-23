@@ -7,11 +7,9 @@ namespace Altinn.Apps.Monitoring.Domain;
 /// </summary>
 internal readonly struct ServiceOwner : IEquatable<ServiceOwner>
 {
-    private readonly string _value;
+    public readonly string Value { get; }
 
-    public readonly string Value => _value;
-
-    private ServiceOwner(string value) => _value = value;
+    private ServiceOwner(string value) => Value = value;
 
     public static ServiceOwner Parse(string serviceOwner)
     {
@@ -31,13 +29,13 @@ internal readonly struct ServiceOwner : IEquatable<ServiceOwner>
         return new ServiceOwner(serviceOwner);
     }
 
-    public bool Equals(ServiceOwner other) => _value.Equals(other._value, StringComparison.Ordinal);
+    public bool Equals(ServiceOwner other) => Value.Equals(other.Value, StringComparison.Ordinal);
 
     public override bool Equals([NotNullWhen(true)] object? obj) => obj is ServiceOwner other && Equals(other);
 
-    public override int GetHashCode() => _value.GetHashCode(StringComparison.Ordinal);
+    public override int GetHashCode() => Value.GetHashCode(StringComparison.Ordinal);
 
-    public override string ToString() => _value;
+    public override string ToString() => Value;
 
     public static bool operator ==(ServiceOwner left, ServiceOwner right) => left.Equals(right);
 
