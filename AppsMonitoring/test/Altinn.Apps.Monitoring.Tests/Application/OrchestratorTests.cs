@@ -8,7 +8,7 @@ using NodaTime.Text;
 
 namespace Altinn.Apps.Monitoring.Tests.Application;
 
-public class OrchestratorTests
+internal sealed class OrchestratorTests
 {
     private static async Task<(
         IReadOnlyList<TelemetryEntity> Telemetry,
@@ -94,11 +94,10 @@ public class OrchestratorTests
         },
     };
 
-    [Theory]
-    [InlineData("one", TelemetryGenerator.Empty)]
-    [InlineData("one", TelemetryGenerator.Multiple)]
-    [InlineData("skd", TelemetryGenerator.WithSeeder)]
-    internal async Task Orchestration_Progresses_Successfully(string serviceOwner, TelemetryGenerator generator)
+    [InputParameter("one", TelemetryGenerator.Empty)]
+    [InputParameter("one", TelemetryGenerator.Multiple)]
+    [InputParameter("skd", TelemetryGenerator.WithSeeder)]
+    public static async Task Orchestration_Progresses_Successfully(string serviceOwner, TelemetryGenerator generator)
     {
         ServiceOwner[] serviceOwners = [ServiceOwner.Parse(serviceOwner)];
         await using var fixture = await OrchestratorFixture.Create(

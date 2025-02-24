@@ -77,7 +77,7 @@ internal sealed record OrchestratorFixture(
 
     public static async Task<OrchestratorFixture> Create(Action<IServiceCollection, HostFixture> configureServices)
     {
-        var cancellationToken = TestContext.Current.CancellationToken;
+        var cancellationToken = TestProject.CancellationToken;
 
         var startSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         SemaphoreSlim? adapterSemaphore = null;

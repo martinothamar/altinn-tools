@@ -2,13 +2,11 @@ using Altinn.Apps.Monitoring.Application;
 
 namespace Altinn.Apps.Monitoring.Tests.Application.Db;
 
-public class SeederTests
+internal sealed class SeederTests
 {
-    [Fact]
-    public async Task Seeds_Db_Successfully()
+    public static async Task Seeds_Db_Successfully()
     {
-        var cancellationToken = TestContext.Current.CancellationToken;
-
+        var cancellationToken = TestProject.CancellationToken;
         await using var fixture = await HostFixture.Create(
             (services, _) =>
             {

@@ -127,7 +127,7 @@ internal sealed class HostFixture : WebApplicationFactory<Program>
     {
         var solutionDir = FindSolutionDir();
 
-        var cancellationToken = TestContext.Current.CancellationToken;
+        var cancellationToken = TestProject.CancellationToken;
 
         PostgreSqlContainer? postgreSqlContainer = null;
         HostFixture? fixture = null;

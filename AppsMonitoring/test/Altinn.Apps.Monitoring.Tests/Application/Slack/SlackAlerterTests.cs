@@ -13,7 +13,7 @@ using WireMock.Server;
 
 namespace Altinn.Apps.Monitoring.Tests.Application.Slack;
 
-public class SlackAlerterTests
+internal sealed class SlackAlerterTests
 {
     private const string OkPayload = """
         {
@@ -98,25 +98,21 @@ public class SlackAlerterTests
         },
     };
 
-    public static TheoryData<string, int> SlackApiParameters =>
-        new TheoryData<string, int>()
-        {
-            { "200-ok", 0 },
-            { "200-error", 0 },
-            { "500-error", 0 },
-            { "429-ratelimited", 0 },
-            // We only fail once here, so HttpClient retries (up to 3) will make it recover
-            { "500-error-then-ok", 0 },
-            { "429-ratelimited-then-ok", 0 },
-            // HttpClient should retry 3 times internally,
-            // but then during the second poll iteration we should succeed.
-            // So we expecte 2 alerter events (where the latter succeeds)
-            { "500-error-4-times-then-ok", 1 },
-        };
-
-    [Theory]
-    [MemberData(nameof(SlackApiParameters))]
-    public async Task Alerts_Eventually_Successfully_For_Non_Seeded_Telemetry(string @case, int waitForRetryEvents)
+    [InputParameter("200-ok", 0)]
+    [InputParameter("200-error", 0)]
+    [InputParameter("500-error", 0)]
+    [InputParameter("429-ratelimited", 0)]
+    // We only fail once here, so HttpClient retries (up to 3) will make it recover
+    [InputParameter("500-error-then-ok", 0)]
+    [InputParameter("429-ratelimited-then-ok", 0)]
+    // HttpClient should retry 3 times internally,
+    // but then during the second poll iteration we should succeed.
+    // So we expecte 2 alerter events (where the latter succeeds)
+    [InputParameter("500-error-4-times-then-ok", 1)]
+    public static async Task Alerts_Eventually_Successfully_For_Non_Seeded_Telemetry(
+        string @case,
+        int waitForRetryEvents
+    )
     {
         ServiceOwner[] serviceOwners = [ServiceOwner.Parse("skd")];
         await using var fixture = await OrchestratorFixture.Create(
@@ -245,8 +241,7 @@ public class SlackAlerterTests
         return (telemetry, alerts);
     }
 
-    [Fact]
-    public async Task Deserialization_Of_Slack_Ok_Response_Succeeds()
+    public static async Task Deserialization_Of_Slack_Ok_Response_Succeeds()
     {
         var json = OkPayload;
 
@@ -254,8 +249,7 @@ public class SlackAlerterTests
         await Verify(response).AutoVerify();
     }
 
-    [Fact]
-    public async Task Deserialization_Of_Slack_Error_Response_Succeeds()
+    public static async Task Deserialization_Of_Slack_Error_Response_Succeeds()
     {
         var json = ErrorPayload;
 

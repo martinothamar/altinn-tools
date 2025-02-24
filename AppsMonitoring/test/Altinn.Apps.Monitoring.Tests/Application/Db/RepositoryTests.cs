@@ -4,7 +4,7 @@ using Altinn.Apps.Monitoring.Domain;
 
 namespace Altinn.Apps.Monitoring.Tests.Application.Db;
 
-public class RepositoryTests
+internal sealed class RepositoryTests
 {
     private static async Task<(
         IReadOnlyList<TelemetryEntity> Telemetry,
@@ -16,11 +16,9 @@ public class RepositoryTests
         return (telemetry, queries);
     }
 
-    [Fact]
-    public async Task Insert_Telemetry_Is_Idempotent()
+    public static async Task Insert_Telemetry_Is_Idempotent()
     {
-        var cancellationToken = TestContext.Current.CancellationToken;
-
+        var cancellationToken = TestProject.CancellationToken;
         await using var fixture = await HostFixture.Create();
 
         using var _ = await fixture.Start(cancellationToken);
