@@ -135,5 +135,27 @@
         }
       }
     ]
-  }
+  },
+  IndexRecommendations: [
+    {
+      TableName: telemetry,
+      TooMuchSeq: 1,
+      Result: Missing Index?,
+      TableRelSize: 8192,
+      SeqScan: 3,
+      IndexScan: 2
+    },
+    {
+      TableName: alerts,
+      Result: OK,
+      TableRelSize: 8192
+    },
+    {
+      TableName: queries,
+      TooMuchSeq: -2,
+      Result: OK,
+      TableRelSize: 8192,
+      IndexScan: 2
+    }
+  ]
 }

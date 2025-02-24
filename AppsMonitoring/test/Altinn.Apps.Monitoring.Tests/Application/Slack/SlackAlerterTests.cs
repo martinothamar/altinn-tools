@@ -225,11 +225,13 @@ public class SlackAlerterTests
     )
     {
         var (telemetry, alerts) = await GetState(repository, cancellationToken);
+        var indexRecommendations = await repository.ListIndexRecommendations(cancellationToken: cancellationToken);
         return new
         {
             QueryResults = queryResults,
             AlerterEvents = alerterEvents,
             State = new State(telemetry, alerts),
+            IndexRecommendations = indexRecommendations,
         };
     }
 

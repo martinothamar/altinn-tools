@@ -56,8 +56,8 @@ internal sealed record OrchestratorFixture(
         }
         // There is a small window of time between the adapter calling `Release`
         // and the adapter actually hitting the `Task.Delay` await point with the fake TimeProvider.
-        // So we have this `Task.Yield` to make this race more improbable (this happened very rarely)
-        await Task.Yield();
+        // So we have this `Task.Delay` to make this race more improbable (this happened very rarely)
+        await Task.Delay(10, cancellationToken);
         HostFixture.TimeProvider.Advance(Latency);
 
         // Now the events should be available eventually (the adapters should be responding)

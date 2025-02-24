@@ -360,4 +360,44 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
         await command.PrepareAsync(cancellationToken);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
+
+    public async ValueTask<IReadOnlyList<IndexRecommendation>> ListIndexRecommendations(
+        CancellationToken cancellationToken
+    )
+    {
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+                SELECT
+                    relname as table_name,
+                    seq_scan-idx_scan AS table_too_much_seq,
+                    case when seq_scan-idx_scan>0 THEN 'Missing Index?' ELSE 'OK' END as table_result,
+                    pg_relation_size(relid::regclass) AS table_rel_size,
+                    seq_scan as total_seq_scan,
+                    idx_scan as total_index_scan
+                FROM pg_stat_all_tables
+                WHERE schemaname='monitoring'
+                ORDER BY table_too_much_seq DESC NULLS LAST;
+            """;
+
+        await command.PrepareAsync(cancellationToken);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+        List<IndexRecommendation> recommendations = new();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var tableName = reader.GetFieldValue<string>(0);
+            var tooMuchSeq = reader.GetFieldValue<long>(1);
+            var tableResult = reader.GetFieldValue<string>(2);
+            var tableSize = reader.GetFieldValue<long>(3);
+            var totalSeqScan = reader.GetFieldValue<long>(4);
+            var totalIndexScan = reader.GetFieldValue<long>(5);
+
+            recommendations.Add(
+                new IndexRecommendation(tableName, tooMuchSeq, tableResult, tableSize, totalSeqScan, totalIndexScan)
+            );
+        }
+
+        return recommendations;
+    }
 }

@@ -77,6 +77,9 @@ internal sealed class Script0001Initial : IScript
                     UNIQUE (service_owner, ext_id)
                 );
 
+                CREATE INDEX idx_telemetry_time_generated ON monitoring.telemetry (time_generated);
+                CREATE INDEX idx_telemetry_seeded ON monitoring.telemetry (seeded);
+
                 CREATE TABLE monitoring.queries (
                     id BIGSERIAL PRIMARY KEY,
                     service_owner TEXT NOT NULL,
@@ -93,6 +96,8 @@ internal sealed class Script0001Initial : IScript
                     data JSONB NOT NULL,
                     UNIQUE (telemetry_id)
                 );
+
+                CREATE INDEX idx_alerts_from_telemetry ON monitoring.alerts (telemetry_id, state, (data->>'$type'));
             """;
     }
 }
