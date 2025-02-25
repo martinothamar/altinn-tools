@@ -8,10 +8,15 @@ namespace Altinn.Apps.Monitoring.Domain;
 internal readonly struct ServiceOwner : IEquatable<ServiceOwner>
 {
     public readonly string Value { get; }
+    public readonly string? ExtId { get; }
 
-    private ServiceOwner(string value) => Value = value;
+    private ServiceOwner(string value, string? extId)
+    {
+        Value = value;
+        ExtId = extId;
+    }
 
-    public static ServiceOwner Parse(string serviceOwner)
+    public static ServiceOwner Parse(string serviceOwner, string? extId = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(serviceOwner, nameof(serviceOwner));
 
@@ -26,7 +31,7 @@ internal readonly struct ServiceOwner : IEquatable<ServiceOwner>
             }
         }
 
-        return new ServiceOwner(serviceOwner);
+        return new ServiceOwner(serviceOwner, extId);
     }
 
     public bool Equals(ServiceOwner other) => Value.Equals(other.Value, StringComparison.Ordinal);

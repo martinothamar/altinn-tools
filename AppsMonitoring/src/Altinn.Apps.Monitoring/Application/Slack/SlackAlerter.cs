@@ -226,14 +226,24 @@ internal sealed class SlackAlerter(
                     - Instansen: *{data.InstanceOwnerPartyId}*/*{data.InstanceId}*
                     - Operation ID: *{data.TraceId}*
                     """;
-                var channel = _config.CurrentValue.SlackChannel;
+                var config = _config.CurrentValue;
                 try
                 {
+                    var channel = config.SlackChannel;
+                    if (config.DisableSlackAlerts)
+                    {
+                        _logger.LogInformation("Would have sent alert to Slack for: {TelemetyrId}", alert.TelemetryId);
+                        return alert with
+                        {
+                            State = AlertState.Alerted,
+                            Data = alertData with { Message = text, Channel = channel, ThreadTs = "none" },
+                        };
+                    }
                     using var response = await _httpClient.PostAsJsonAsync(
                         "/api/chat.postMessage",
                         new
                         {
-                            channel = _config.CurrentValue.SlackChannel,
+                            channel = channel,
                             text = text,
                             mrkdwn = true,
                             // thread_ts - we will use this to update the Slack alert when mitigations have been made (not here though)

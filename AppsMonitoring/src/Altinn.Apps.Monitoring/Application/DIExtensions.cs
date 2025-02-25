@@ -86,7 +86,7 @@ internal static class DIExtensions
                     return false;
                 if (string.IsNullOrWhiteSpace(config.AltinnEnvironment))
                     return false;
-                if (config.AltinnEnvironment is not "at24" or "tt02" or "prod")
+                if (config.AltinnEnvironment is not "at24" and not "tt02" and not "prod")
                     return false;
                 if (string.IsNullOrWhiteSpace(config.DbConnectionString))
                     return false;
@@ -115,6 +115,9 @@ internal static class DIExtensions
 
     private static IHostApplicationBuilder AddOtel(this IHostApplicationBuilder builder)
     {
+        builder.Logging.ClearProviders();
+        builder.Logging.AddSimpleConsole();
+
         var otel = builder.Services.AddOpenTelemetry();
 
         otel.WithMetrics(metrics => metrics.AddMeter("System.Runtime").AddNpgsqlInstrumentation());

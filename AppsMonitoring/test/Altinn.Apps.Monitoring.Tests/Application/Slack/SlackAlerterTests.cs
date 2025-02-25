@@ -129,6 +129,7 @@ public class SlackAlerterTests
                 services.Configure<AppConfiguration>(config =>
                 {
                     config.DisableAlerter = false;
+                    config.DisableSlackAlerts = false;
                     config.SlackAccessToken = "Secret!";
                     config.SlackChannel = "C01UJ9G";
                     config.SlackHost =

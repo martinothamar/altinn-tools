@@ -16,9 +16,10 @@ internal sealed class AppConfiguration
 
     public string KeyVaultName { get; set; } = null!;
 
-    internal bool DisableOrchestrator { get; set; }
-    internal bool DisableSeeder { get; set; }
-    internal bool DisableAlerter { get; set; }
+    public bool DisableOrchestrator { get; set; }
+    public bool DisableSeeder { get; set; }
+    public bool DisableAlerter { get; set; }
+    public bool DisableSlackAlerts { get; set; }
 
     internal TaskCompletionSource? OrchestratorStartSignal { get; set; }
 }

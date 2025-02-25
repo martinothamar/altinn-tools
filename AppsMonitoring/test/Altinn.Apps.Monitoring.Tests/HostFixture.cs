@@ -103,6 +103,7 @@ internal sealed class HostFixture : WebApplicationFactory<Program>
             options.DisableOrchestrator = true;
             options.DisableSeeder = true;
             options.DisableAlerter = true;
+            options.DisableSlackAlerts = true;
         });
 
         var timeProvider = new FakeTimeProvider(new DateTimeOffset(2025, 1, 1, 12, 0, 0, TimeSpan.Zero));

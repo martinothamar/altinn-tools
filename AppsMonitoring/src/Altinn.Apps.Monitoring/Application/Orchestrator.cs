@@ -199,11 +199,41 @@ internal sealed class Orchestrator(
 
                         var ingestionTimestamp = _timeProvider.GetCurrentInstant();
                         List<TelemetryEntity> telemetry = new(totalRows);
+                        var positionByExtId = new Dictionary<string, int>(totalRows).GetAlternateLookup<
+                            ReadOnlySpan<char>
+                        >();
                         foreach (var table in tables)
                         {
                             foreach (var row in table)
-                                telemetry.Add(row with { TimeIngested = ingestionTimestamp });
+                            {
+                                if (positionByExtId.TryGetValue(row.ExtId, out var index))
+                                {
+                                    _logger.LogWarning(
+                                        "[{ServiceOwner}] found duplicate telemetry entry for {ExtId}",
+                                        serviceOwner,
+                                        row.ExtId
+                                    );
+                                    var existing = telemetry[index];
+                                    var shouldReplace = (row.Data, existing.Data) switch
+                                    {
+                                        (TraceData @new, TraceData old) => @new.Duration > old.Duration,
+                                        _ => throw new NotSupportedException(),
+                                    };
+                                    if (shouldReplace)
+                                        telemetry[index] = row with { TimeIngested = ingestionTimestamp };
+                                }
+                                else
+                                {
+                                    positionByExtId.Dictionary.Add(row.ExtId, telemetry.Count);
+                                    telemetry.Add(row with { TimeIngested = ingestionTimestamp });
+                                }
+                            }
                         }
+
+                        Debug.Assert(
+                            telemetry.GroupBy(t => t.ExtId).All(g => g.Count() == 1),
+                            "Should have gotten rid of dupes"
+                        );
 
                         await _repository.InsertTelemetry(serviceOwner, query, searchTo, telemetry, cancellationToken);
 

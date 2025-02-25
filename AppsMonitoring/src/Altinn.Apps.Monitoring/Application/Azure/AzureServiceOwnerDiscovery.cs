@@ -33,10 +33,15 @@ internal sealed class AzureServiceOwnerDiscovery(
                     return;
 
                 var serviceOwnerValue = split[1];
-                if (serviceOwnerValue.Any(char.IsLower))
+                if (serviceOwnerValue.Any(c => char.IsLower(c) || !char.IsLetter(c)))
                     return;
 
-                var serviceOwner = ServiceOwner.Parse(serviceOwnerValue);
+#pragma warning disable CA1308 // Normalize strings to uppercase
+                var serviceOwner = ServiceOwner.Parse(
+                    serviceOwnerValue.ToLowerInvariant(),
+                    subscription.Id.SubscriptionId
+                );
+#pragma warning restore CA1308 // Normalize strings to uppercase
                 var resources = await _serviceOwnerResources.GetResources(serviceOwner, cancellationToken);
                 if (resources is null)
                     return;

@@ -37,13 +37,13 @@ internal sealed class AzureServiceOwnerResources(
                 var (self, serviceOwner) = state;
                 var config = self._config.CurrentValue;
 
+                if (string.IsNullOrWhiteSpace(serviceOwner.ExtId))
+                    return null;
+
                 var env = config.AltinnEnvironment;
                 var subscription = await self
                     ._armClient.GetSubscriptions()
-                    .GetAsync(
-                        $"Altinn-{serviceOwner.Value.ToUpperInvariant()}-{$"{char.ToUpperInvariant(env[0])}{env[1..]}"}",
-                        cancellationToken: cancellationToken
-                    );
+                    .GetAsync(serviceOwner.ExtId, cancellationToken: cancellationToken);
                 if (subscription is null)
                     return null;
 
