@@ -123,7 +123,7 @@ internal sealed class Seeder(
             }
             finally
             {
-                await sourceDb.CloseAsync();
+                // await sourceDb.CloseAsync();
             }
         }
         catch (Exception ex)
