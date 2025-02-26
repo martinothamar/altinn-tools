@@ -45,7 +45,10 @@ internal sealed class Seeder(
             if (!dbFileInfo.Exists)
                 throw new FileNotFoundException("SQLite db does not exist", dbFileInfo.FullName);
 
-            var sourceDb = new SQLiteAsyncConnection(dbFileInfo.FullName);
+            var sourceDb = new SQLiteAsyncConnection(
+                dbFileInfo.FullName,
+                SQLiteOpenFlags.ReadOnly | SQLiteOpenFlags.NoMutex
+            );
             try
             {
                 var records = await sourceDb.Table<ErrorRecord>().ToArrayAsync();
