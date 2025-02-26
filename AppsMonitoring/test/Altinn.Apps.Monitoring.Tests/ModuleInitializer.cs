@@ -7,6 +7,7 @@ internal static class ModuleInitializer
     [ModuleInitializer]
     public static void Init()
     {
+        VerifierSettings.AutoVerify(includeBuildServer: false);
         Verifier.UseSourceFileRelativeDirectory("_snapshots");
     }
 }

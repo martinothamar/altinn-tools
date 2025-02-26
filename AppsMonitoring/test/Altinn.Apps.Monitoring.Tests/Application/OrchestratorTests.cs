@@ -180,7 +180,6 @@ public class OrchestratorTests
         }
 
         await Verify(changes)
-            .AutoVerify()
             .ScrubMember<TelemetryEntity>(e => e.Data)
             .DontScrubDateTimes()
             .DontIgnoreEmptyCollections();

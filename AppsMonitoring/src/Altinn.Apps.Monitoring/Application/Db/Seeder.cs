@@ -123,6 +123,9 @@ internal sealed class Seeder(
             }
             finally
             {
+                // It's apparantly not safe to close the connection here.
+                // When running integration tests mulitple seeders may run in parallel and the connection may be shared.
+
                 // await sourceDb.CloseAsync();
             }
         }

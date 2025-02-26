@@ -209,7 +209,6 @@ public class SlackAlerterTests
         }
 
         await Verify(NewSnapshot(queryResults, alerterEvents, repository, cancellationToken))
-            .AutoVerify()
             .ScrubMember<TelemetryEntity>(e => e.Data)
             .DontScrubDateTimes()
             .DontIgnoreEmptyCollections()
@@ -252,7 +251,7 @@ public class SlackAlerterTests
         var json = OkPayload;
 
         var response = JsonSerializer.Deserialize<SlackAlerter.SlackResponse>(json);
-        await Verify(response).AutoVerify();
+        await Verify(response);
     }
 
     [Fact]
@@ -261,6 +260,6 @@ public class SlackAlerterTests
         var json = ErrorPayload;
 
         var response = JsonSerializer.Deserialize<SlackAlerter.SlackResponse>(json);
-        await Verify(response).AutoVerify();
+        await Verify(response);
     }
 }

@@ -11,7 +11,7 @@ public class TelemetryEntityTests
 
         var json = data.Serialize();
 
-        await VerifyJson(json).AutoVerify();
+        await VerifyJson(json);
 
         var deserializedData = TelemetryData.Deserialize(json);
         var deserializedTraceData = Assert.IsType<TraceData>(deserializedData);
@@ -32,7 +32,7 @@ public class TelemetryEntityTests
 
         var json = data.Serialize();
 
-        await VerifyJson(json).AutoVerify();
+        await VerifyJson(json);
 
         var deserializedData = TelemetryData.Deserialize(json);
         var deserializedLogsData = Assert.IsType<LogsData>(deserializedData);
@@ -52,7 +52,7 @@ public class TelemetryEntityTests
 
         var json = data.Serialize();
 
-        await VerifyJson(json).AutoVerify();
+        await VerifyJson(json);
 
         var deserializedData = TelemetryData.Deserialize(json);
         var deserializedLogsData = Assert.IsType<MetricData>(deserializedData);

@@ -134,7 +134,6 @@ public class RepositoryTests
         }
 
         await Verify(changes)
-            .AutoVerify()
             .ScrubMember<TelemetryEntity>(e => e.Data)
             .DontScrubDateTimes()
             .DontIgnoreEmptyCollections();

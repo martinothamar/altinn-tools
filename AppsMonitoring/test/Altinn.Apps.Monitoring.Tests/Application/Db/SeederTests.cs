@@ -31,7 +31,6 @@ public class SeederTests
         var queryStates = await repository.ListQueryStates(cancellationToken: cancellationToken);
 
         await Verify(new { Telemetry = telemetry, QueryStates = queryStates })
-            .AutoVerify()
             .DontScrubDateTimes()
             .DontIgnoreEmptyCollections();
     }
