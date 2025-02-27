@@ -1,3 +1,4 @@
+using System.Globalization;
 using Altinn.Apps.Monitoring.Application;
 using Altinn.Apps.Monitoring.Application.Db;
 using DotNet.Testcontainers.Builders;
@@ -5,6 +6,7 @@ using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Time.Testing;
+using Npgsql;
 using Testcontainers.PostgreSql;
 using WireMock.Server;
 
@@ -70,11 +72,24 @@ internal sealed class HostFixture : WebApplicationFactory<Program>
         });
         builder.ConfigureHostConfiguration(config =>
         {
+            var connnStringBuilder = new NpgsqlConnectionStringBuilder(PostgreSqlContainer.GetConnectionString());
+            var dbAdmin = $"{nameof(AppConfiguration)}:{nameof(AppConfiguration.DbAdmin)}";
+            var db = $"{nameof(AppConfiguration)}:{nameof(AppConfiguration.Db)}";
+            var port = connnStringBuilder.Port.ToString(CultureInfo.InvariantCulture);
             config.AddInMemoryCollection(
                 new Dictionary<string, string?>
                 {
-                    [$"{nameof(AppConfiguration)}:{nameof(AppConfiguration.DbConnectionString)}"] =
-                        PostgreSqlContainer.GetConnectionString(),
+                    [$"{dbAdmin}:{nameof(DbConfiguration.Host)}"] = connnStringBuilder.Host,
+                    [$"{dbAdmin}:{nameof(DbConfiguration.Username)}"] = connnStringBuilder.Username,
+                    [$"{dbAdmin}:{nameof(DbConfiguration.Password)}"] = connnStringBuilder.Password,
+                    [$"{dbAdmin}:{nameof(DbConfiguration.Database)}"] = connnStringBuilder.Database,
+                    [$"{dbAdmin}:{nameof(DbConfiguration.Port)}"] = port,
+
+                    [$"{db}:{nameof(DbConfiguration.Host)}"] = connnStringBuilder.Host,
+                    [$"{db}:{nameof(DbConfiguration.Username)}"] = "platform_monitoring",
+                    [$"{db}:{nameof(DbConfiguration.Password)}"] = connnStringBuilder.Password,
+                    [$"{db}:{nameof(DbConfiguration.Database)}"] = connnStringBuilder.Database,
+                    [$"{db}:{nameof(DbConfiguration.Port)}"] = port,
                 }
             );
         });
@@ -141,13 +156,14 @@ internal sealed class HostFixture : WebApplicationFactory<Program>
                 .WithUsername("platform_monitoring_admin")
                 .WithPassword("Password")
                 .WithResourceMapping(initFile, "/docker-entrypoint-initdb.d/")
-                .WithDatabase("monitoringdb")
+                .WithDatabase("monitordb")
                 // We reset the environment as we don't want postgresql to actually create
                 // the database for us, as we are providing our own init script.
+                .WithAutoRemove(false)
+                .WithCleanUp(false)
                 .WithEnvironment("POSTGRES_DB", PostgreSqlBuilder.DefaultDatabase)
                 .WithWaitStrategy(
-                    Wait.ForUnixContainer()
-                        .AddCustomWaitStrategy(new WaitUntil("monitoringdb", "platform_monitoring_admin"))
+                    Wait.ForUnixContainer().AddCustomWaitStrategy(new WaitUntil("monitordb", "platform_monitoring"))
                 )
                 .Build();
             await postgreSqlContainer.StartAsync(cancellationToken);

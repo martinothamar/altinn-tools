@@ -6,6 +6,7 @@ using Azure.Extensions.AspNetCore.Configuration.Secrets;
 using Azure.Identity;
 using Azure.Monitor.OpenTelemetry.AspNetCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using Npgsql;
 using OpenTelemetry;
 
@@ -33,22 +34,8 @@ internal static class DIExtensions
         builder.Services.TryAddSingleton<IAlerter, SlackAlerter>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<IAlerter>());
 
-        // Database services
-        var connString = builder.Configuration.GetSection(nameof(AppConfiguration))[
-            nameof(AppConfiguration.DbConnectionString)
-        ];
-        if (string.IsNullOrWhiteSpace(connString))
-            throw new InvalidOperationException("Missing connection string in configuration");
-        builder.Services.AddNpgsqlDataSource(
-            connString,
-            (sp, builder) =>
-                builder
-                    .UseLoggerFactory(sp.GetRequiredService<ILoggerFactory>())
-                    .EnableDynamicJson()
-                    .ConfigureJsonOptions(Db.Config.JsonOptions)
-                    .UseNodaTime()
-                    .ConfigureTracing(o => { })
-        );
+        builder.AddDb();
+
         builder.Services.TryAddSingleton<Repository>();
         builder.Services.TryAddSingleton<DistributedLocking>();
 
@@ -88,11 +75,56 @@ internal static class DIExtensions
                     return false;
                 if (config.AltinnEnvironment is not "at24" and not "tt02" and not "prod")
                     return false;
-                if (string.IsNullOrWhiteSpace(config.DbConnectionString))
+                if (string.IsNullOrWhiteSpace(config.Db?.Host))
+                    return false;
+                if (string.IsNullOrWhiteSpace(config.Db?.Username))
+                    return false;
+                if (string.IsNullOrWhiteSpace(config.Db?.Password))
+                    return false;
+                if (string.IsNullOrWhiteSpace(config.Db?.Database))
+                    return false;
+                if (string.IsNullOrWhiteSpace(config.DbAdmin?.Host))
+                    return false;
+                if (string.IsNullOrWhiteSpace(config.DbAdmin?.Username))
+                    return false;
+                if (string.IsNullOrWhiteSpace(config.DbAdmin?.Password))
+                    return false;
+                if (string.IsNullOrWhiteSpace(config.DbAdmin?.Database))
                     return false;
 
                 return true;
             })
+            .PostConfigure<IConfiguration>(
+                (config, root) =>
+                {
+                    // Update DbAdmin from PostgreSQLSettings
+                    if (!builder.Environment.IsDevelopment())
+                    {
+                        var settings = root.GetSection("PostgreSQLSettings");
+                        config.DbAdmin = new DbConfiguration
+                        {
+                            Host = config.DbAdmin.Host,
+                            Username = "monitor_admin",
+                            Password =
+                                settings["AppsMonitorDbAdminPwd"]
+                                ?? throw new InvalidOperationException(
+                                    "Missing AppsMonitorDbAdminPwd in configuration"
+                                ),
+                            Database = "monitordb",
+                        };
+
+                        config.Db = new DbConfiguration
+                        {
+                            Host = config.Db.Host,
+                            Username = "monitor",
+                            Password =
+                                settings["AppsMonitorDbPwd"]
+                                ?? throw new InvalidOperationException("Missing AppsMonitorDbPwd in configuration"),
+                            Database = "monitordb",
+                        };
+                    }
+                }
+            )
             .ValidateOnStart();
 
         if (!builder.Environment.IsDevelopment())
@@ -134,6 +166,48 @@ internal static class DIExtensions
                 options.Credential = new ManagedIdentityCredential();
             });
         }
+        return builder;
+    }
+
+    private static IHostApplicationBuilder AddDb(this IHostApplicationBuilder builder)
+    {
+        static ConnectionString BuildConnectionString(IHostApplicationBuilder builder, DbConfiguration db)
+        {
+            NpgsqlConnectionStringBuilder connStringBuilder = new();
+            connStringBuilder.Host = db.Host;
+            connStringBuilder.Username = db.Username;
+            connStringBuilder.Password = db.Password;
+            connStringBuilder.Database = db.Database;
+            connStringBuilder.Port = db.Port;
+            connStringBuilder.IncludeErrorDetail = true;
+            if (!builder.Environment.IsDevelopment())
+                connStringBuilder.SslMode = SslMode.Require;
+
+            return new ConnectionString(connStringBuilder.ToString());
+        }
+
+        builder.Services.TryAddKeyedSingleton<ConnectionString>(
+            Config.UserMode,
+            (sp, key) => BuildConnectionString(builder, sp.GetRequiredService<IOptions<AppConfiguration>>().Value.Db)
+        );
+
+        builder.Services.TryAddKeyedSingleton<ConnectionString>(
+            Config.AdminMode,
+            (sp, key) =>
+                BuildConnectionString(builder, sp.GetRequiredService<IOptions<AppConfiguration>>().Value.DbAdmin)
+        );
+
+        static NpgsqlDataSource BuildDataSource(IServiceProvider sp, object? key) =>
+            new NpgsqlDataSourceBuilder(sp.GetRequiredKeyedService<ConnectionString>(key).Value)
+                .UseLoggerFactory(sp.GetRequiredService<ILoggerFactory>())
+                .EnableDynamicJson()
+                .ConfigureJsonOptions(Db.Config.JsonOptions)
+                .UseNodaTime()
+                .ConfigureTracing(o => { })
+                .Build();
+        builder.Services.AddKeyedSingleton<NpgsqlDataSource>(Config.UserMode, (sp, key) => BuildDataSource(sp, key));
+        builder.Services.AddKeyedSingleton<NpgsqlDataSource>(Config.AdminMode, (sp, key) => BuildDataSource(sp, key));
+
         return builder;
     }
 }

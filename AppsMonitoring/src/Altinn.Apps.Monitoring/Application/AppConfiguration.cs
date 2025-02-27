@@ -11,7 +11,8 @@ internal sealed class AppConfiguration
 
     public string AltinnEnvironment { get; set; } = "at24";
 
-    public string DbConnectionString { get; set; } = null!;
+    public DbConfiguration Db { get; set; } = null!;
+    public DbConfiguration DbAdmin { get; set; } = null!;
     public string SeedSqliteDbPath { get; set; } = Path.Combine("data", "data.db");
 
     public string KeyVaultName { get; set; } = null!;
@@ -22,4 +23,13 @@ internal sealed class AppConfiguration
     public bool DisableSlackAlerts { get; set; }
 
     internal TaskCompletionSource? OrchestratorStartSignal { get; set; }
+}
+
+internal sealed class DbConfiguration
+{
+    public string Host { get; set; } = null!;
+    public string Username { get; set; } = null!;
+    public string Password { get; set; } = null!;
+    public string Database { get; set; } = null!;
+    public int Port { get; set; } = 5432;
 }

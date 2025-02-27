@@ -151,6 +151,11 @@
       TableRelSize: 8192
     },
     {
+      TableName: schema_version,
+      Result: OK,
+      TableRelSize: 8192
+    },
+    {
       TableName: queries,
       TooMuchSeq: -2,
       Result: OK,

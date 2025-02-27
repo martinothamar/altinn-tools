@@ -6,6 +6,9 @@ namespace Altinn.Apps.Monitoring.Application.Db;
 
 internal static class Config
 {
+    internal const string UserMode = "user";
+    internal const string AdminMode = "admin";
+
     internal static JsonSerializerOptions JsonOptions { get; }
 
     static Config()

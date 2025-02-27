@@ -3,19 +3,18 @@ using System.Reflection;
 using Altinn.Apps.Monitoring.Application.Db;
 using DbUp;
 using DbUp.Engine;
-using Microsoft.Extensions.Options;
 
 namespace Altinn.Apps.Monitoring.Application.DbUp;
 
 internal sealed class Migrator(
     ILogger<Migrator> logger,
-    IOptions<AppConfiguration> appConfiguration,
-    DistributedLocking locking
+    DistributedLocking locking,
+    [FromKeyedServices(Config.AdminMode)] ConnectionString connectionString
 ) : IHostedService
 {
     private readonly ILogger<Migrator> _logger = logger;
-    private readonly AppConfiguration _appConfiguration = appConfiguration.Value;
     private readonly DistributedLocking _locking = locking;
+    private readonly ConnectionString _connectionString = connectionString;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -23,9 +22,9 @@ internal sealed class Migrator(
         {
             await using var _ = await _locking.Lock(DistributedLockName.DbMigrator, cancellationToken);
 
-            var connectionString = _appConfiguration.DbConnectionString;
             var upgrader = DeployChanges
-                .To.PostgresqlDatabase(connectionString)
+                .To.PostgresqlDatabase(_connectionString.Value)
+                .JournalToPostgresqlTable("monitor", "schema_version")
                 .WithScriptsAndCodeEmbeddedInAssembly(Assembly.GetExecutingAssembly())
                 .LogTo(_logger)
                 .WithTransaction()
@@ -63,7 +62,7 @@ internal sealed class Script0001Initial : IScript
     public string ProvideScript(Func<IDbCommand> dbCommandFactory)
     {
         return """
-                CREATE TABLE monitoring.telemetry (
+                CREATE TABLE monitor.telemetry (
                     id BIGSERIAL PRIMARY KEY,
                     ext_id TEXT NOT NULL,
                     service_owner TEXT NOT NULL,
@@ -77,10 +76,10 @@ internal sealed class Script0001Initial : IScript
                     UNIQUE (service_owner, ext_id)
                 );
 
-                CREATE INDEX idx_telemetry_time_generated ON monitoring.telemetry (time_generated);
-                CREATE INDEX idx_telemetry_seeded ON monitoring.telemetry (seeded);
+                CREATE INDEX idx_telemetry_time_generated ON monitor.telemetry (time_generated);
+                CREATE INDEX idx_telemetry_seeded ON monitor.telemetry (seeded);
 
-                CREATE TABLE monitoring.queries (
+                CREATE TABLE monitor.queries (
                     id BIGSERIAL PRIMARY KEY,
                     service_owner TEXT NOT NULL,
                     name TEXT NOT NULL,
@@ -89,15 +88,15 @@ internal sealed class Script0001Initial : IScript
                     UNIQUE (service_owner, hash)
                 );
 
-                CREATE TABLE monitoring.alerts (
+                CREATE TABLE monitor.alerts (
                     id BIGSERIAL PRIMARY KEY,
                     state INTEGER NOT NULL,
-                    telemetry_id BIGSERIAL NOT NULL REFERENCES monitoring.telemetry (id),
+                    telemetry_id BIGSERIAL NOT NULL REFERENCES monitor.telemetry (id),
                     data JSONB NOT NULL,
                     UNIQUE (telemetry_id)
                 );
 
-                CREATE INDEX idx_alerts_from_telemetry ON monitoring.alerts (telemetry_id, state, (data->>'$type'));
+                CREATE INDEX idx_alerts_from_telemetry ON monitor.alerts (telemetry_id, state, (data->>'$type'));
             """;
     }
 }

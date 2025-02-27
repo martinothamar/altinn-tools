@@ -9,10 +9,15 @@ namespace Altinn.Apps.Monitoring.Application.Db;
 //   so columns/values are buffered when the row read
 #pragma warning disable CA1849 // Call async methods when in an async method
 
-internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource dataSource)
+internal sealed class Repository(
+    ILogger<Repository> logger,
+    [FromKeyedServices(Config.UserMode)] NpgsqlDataSource userDataSource,
+    [FromKeyedServices(Config.AdminMode)] NpgsqlDataSource adminDataSource
+)
 {
     private readonly ILogger<Repository> _logger = logger;
-    private readonly NpgsqlDataSource _dataSource = dataSource;
+    private readonly NpgsqlDataSource _userDataSource = userDataSource;
+    private readonly NpgsqlDataSource _adminDataSource = adminDataSource;
 
     public async ValueTask<IReadOnlyList<QueryStateEntity>> ListQueryStates(
         ServiceOwner? serviceOwner = null,
@@ -23,11 +28,11 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
         if (query is not null && serviceOwner is null)
             throw new ArgumentException("Service owner must be specified when querying by query hash");
 
-        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var connection = await _userDataSource.OpenConnectionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = """
                 SELECT *
-                FROM monitoring.queries
+                FROM monitor.queries
             """;
         if (serviceOwner is not null)
         {
@@ -64,9 +69,9 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
 
     public async ValueTask<bool> HasAnyTelemetry(CancellationToken cancellationToken)
     {
-        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var connection = await _userDataSource.OpenConnectionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT COUNT(*) FROM monitoring.telemetry";
+        command.CommandText = "SELECT COUNT(*) FROM monitor.telemetry";
         await command.PrepareAsync(cancellationToken);
         var countObj = await command.ExecuteScalarAsync(cancellationToken);
         if (countObj is not long count)
@@ -96,9 +101,9 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
         CancellationToken cancellationToken = default
     )
     {
-        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var connection = await _userDataSource.OpenConnectionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT * FROM monitoring.telemetry";
+        command.CommandText = "SELECT * FROM monitor.telemetry";
         if (serviceOwner is not null)
         {
             command.CommandText += " WHERE service_owner = @service_owner";
@@ -127,7 +132,7 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
         CancellationToken cancellationToken
     )
     {
-        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var connection = await _userDataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
         int written = 0;
@@ -189,9 +194,9 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
             {
                 await using var command = connection.CreateCommand();
                 command.CommandText = """
-                        INSERT INTO monitoring.telemetry (ext_id, service_owner, app_name, app_version, time_generated, time_ingested, dupe_count, seeded, data)
+                        INSERT INTO monitor.telemetry (ext_id, service_owner, app_name, app_version, time_generated, time_ingested, dupe_count, seeded, data)
                         SELECT ext_id, service_owner, app_name, app_version, time_generated, time_ingested, 0 as dupe_count, seeded, data FROM telemetry_import
-                        ON CONFLICT (service_owner, ext_id) DO UPDATE SET dupe_count = monitoring.telemetry.dupe_count + 1
+                        ON CONFLICT (service_owner, ext_id) DO UPDATE SET dupe_count = monitor.telemetry.dupe_count + 1
                         RETURNING ext_id, time_ingested;
                     """;
                 await command.PrepareAsync(cancellationToken);
@@ -219,7 +224,7 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
             var to = written > 0 ? telemetry.Where(t => !dupes.Contains(t.ExtId)).Max(t => t.TimeGenerated) : searchTo;
             await using var command = connection.CreateCommand();
             command.CommandText = """
-                    INSERT INTO monitoring.queries (service_owner, name, hash, queried_until)
+                    INSERT INTO monitor.queries (service_owner, name, hash, queried_until)
                     VALUES (@service_owner, @name, @hash, @queried_until)
                     ON CONFLICT (service_owner, hash) DO UPDATE SET name = EXCLUDED.name, queried_until = EXCLUDED.queried_until;
                 """;
@@ -241,9 +246,9 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
         CancellationToken cancellationToken
     )
     {
-        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var connection = await _userDataSource.OpenConnectionAsync(cancellationToken);
         await using var import = connection.BeginBinaryImport(
-            "COPY monitoring.telemetry (ext_id, service_owner, app_name, app_version, time_generated, time_ingested, dupe_count, seeded, data) FROM STDIN (FORMAT binary)"
+            "COPY monitor.telemetry (ext_id, service_owner, app_name, app_version, time_generated, time_ingested, dupe_count, seeded, data) FROM STDIN (FORMAT binary)"
         );
         for (int i = 0; i < telemetry.Count; i++)
         {
@@ -276,14 +281,14 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
         // * Telemetry items that don't have alerts
         // * Telemetry items that have alerts that are < Mitigated
 
-        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var connection = await _userDataSource.OpenConnectionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = """
                 SELECT
                     t.id as telemetry_id, t.ext_id as telemetry_ext_id, t.service_owner, t.app_name, t.app_version, t.time_generated, t.time_ingested, t.dupe_count, t.seeded, t.data,
                     a.id as alert_id, a.state as alert_state, a.data as alert_data
-                FROM monitoring.telemetry t
-                LEFT JOIN monitoring.alerts a ON t.id = a.telemetry_id
+                FROM monitor.telemetry t
+                LEFT JOIN monitor.alerts a ON t.id = a.telemetry_id
                 WHERE t.seeded = FALSE AND (a.id IS NULL OR (a.state < @state AND a.data->>'$type' = @type));
             """;
         //  For now we only care about pending alerts, since we don't have a mitigation flow yet
@@ -320,9 +325,9 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
 
     public async ValueTask<IReadOnlyList<AlertEntity>> ListAlerts(CancellationToken cancellationToken)
     {
-        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var connection = await _userDataSource.OpenConnectionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT * FROM monitoring.alerts";
+        command.CommandText = "SELECT * FROM monitor.alerts";
         await command.PrepareAsync(cancellationToken);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
 
@@ -345,11 +350,11 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
 
     public async ValueTask SaveAlert(AlertEntity alert, CancellationToken cancellationToken)
     {
-        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var connection = await _userDataSource.OpenConnectionAsync(cancellationToken);
 
         await using var command = connection.CreateCommand();
         command.CommandText = """
-                INSERT INTO monitoring.alerts (state, telemetry_id, data)
+                INSERT INTO monitor.alerts (state, telemetry_id, data)
                 VALUES (@state, @telemetry_id, @data)
                 ON CONFLICT (telemetry_id) DO UPDATE SET state = EXCLUDED.state, data = EXCLUDED.data
             """;
@@ -365,7 +370,7 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
         CancellationToken cancellationToken
     )
     {
-        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var connection = await _adminDataSource.OpenConnectionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = """
                 SELECT
@@ -376,7 +381,7 @@ internal sealed class Repository(ILogger<Repository> logger, NpgsqlDataSource da
                     seq_scan as total_seq_scan,
                     idx_scan as total_index_scan
                 FROM pg_stat_all_tables
-                WHERE schemaname='monitoring'
+                WHERE schemaname='monitor'
                 ORDER BY table_too_much_seq DESC NULLS LAST;
             """;
 

@@ -1,5 +1,4 @@
 using Medallion.Threading.Postgres;
-using Microsoft.Extensions.Options;
 
 namespace Altinn.Apps.Monitoring.Application.Db;
 
@@ -11,22 +10,22 @@ internal enum DistributedLockName : long
     Alerter = 4,
 }
 
-internal sealed class DistributedLocking(ILogger<DistributedLocking> logger, IOptionsMonitor<AppConfiguration> config)
+internal sealed class DistributedLocking(
+    ILogger<DistributedLocking> logger,
+    [FromKeyedServices(Config.UserMode)] ConnectionString connectionString
+)
 {
     private readonly ILogger<DistributedLocking> _logger = logger;
-    private readonly IOptionsMonitor<AppConfiguration> _config = config;
+    private readonly ConnectionString _connectionString = connectionString;
 
     public async ValueTask<IDistributedLockHandle> Lock(
         DistributedLockName lockName,
         CancellationToken cancellationToken
     )
     {
-        _logger.LogInformation("Acquiring lock {LockName}", lockName);
-        var config = _config.CurrentValue;
-        var connectionString = config.DbConnectionString;
         var @lock = new PostgresDistributedLock(
             new PostgresAdvisoryLockKey((long)lockName),
-            connectionString,
+            _connectionString.Value,
             options =>
             {
                 options.KeepaliveCadence(TimeSpan.FromMinutes(1));
