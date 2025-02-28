@@ -373,7 +373,7 @@ internal sealed class Repository(
         await using var command = connection.CreateCommand();
         command.CommandText = $"""
                 INSERT INTO {Tables.Alerts} (state, telemetry_id, data, created_at, updated_at)
-                VALUES (@state, @telemetry_id, @data, created_at, updated_at)
+                VALUES (@state, @telemetry_id, @data, @created_at, @updated_at)
                 ON CONFLICT (telemetry_id) DO
                 UPDATE SET state = EXCLUDED.state, data = EXCLUDED.data, updated_at = EXCLUDED.updated_at
             """;

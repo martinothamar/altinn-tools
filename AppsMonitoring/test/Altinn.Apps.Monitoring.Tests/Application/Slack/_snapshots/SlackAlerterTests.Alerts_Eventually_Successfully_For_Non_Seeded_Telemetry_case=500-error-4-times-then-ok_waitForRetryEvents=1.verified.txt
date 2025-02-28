@@ -62,7 +62,9 @@
       AlertBefore: {
         State: Pending,
         TelemetryId: 5,
-        Data: {}
+        Data: {},
+        CreatedAt: {Scrubbed},
+        UpdatedAt: {Scrubbed}
       }
     },
     {
@@ -80,7 +82,9 @@
       AlertBefore: {
         State: Pending,
         TelemetryId: 5,
-        Data: {}
+        Data: {},
+        CreatedAt: {Scrubbed},
+        UpdatedAt: {Scrubbed}
       },
       AlertAfter: {
         State: Alerted,
@@ -94,7 +98,9 @@
 - Instansen: *123*/*1d449be1-7114-405c-aeee-1f09799f7b74*
 - Operation ID: *75563ff0b3251e04c70362c5a3495174*,
           ThreadTs: 1634160000.000100
-        }
+        },
+        CreatedAt: {Scrubbed},
+        UpdatedAt: {Scrubbed}
       }
     }
   ],
@@ -160,7 +166,9 @@
 - Instansen: *123*/*1d449be1-7114-405c-aeee-1f09799f7b74*
 - Operation ID: *75563ff0b3251e04c70362c5a3495174*,
           ThreadTs: 1634160000.000100
-        }
+        },
+        CreatedAt: {Scrubbed},
+        UpdatedAt: {Scrubbed}
       }
     ]
   }

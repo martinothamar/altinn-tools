@@ -41,6 +41,8 @@ public class SlackAlerterTests
         await Verify(NewSnapshot(orchestratorEvents, alerterEvents, repository, cancellationToken))
             .ScrubMember<TelemetryEntity>(e => e.Data)
             .DontScrubDateTimes()
+            .ScrubMember<AlertEntity>(e => e.CreatedAt)
+            .ScrubMember<AlertEntity>(e => e.UpdatedAt)
             .DontIgnoreEmptyCollections()
             .UseTextForParameters($"case={@case}_waitForRetryEvents={expectedRetries}");
     }

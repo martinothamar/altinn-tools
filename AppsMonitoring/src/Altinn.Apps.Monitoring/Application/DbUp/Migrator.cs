@@ -93,7 +93,7 @@ internal sealed class Script0001Initial : IScript
                     state INTEGER NOT NULL,
                     telemetry_id BIGSERIAL NOT NULL REFERENCES {Repository.Tables.Telemetry} (id),
                     data JSONB NOT NULL,
-                    create_at TIMESTAMPTZ NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL,
                     updated_at TIMESTAMPTZ NOT NULL,
                     UNIQUE (telemetry_id)
                 );
