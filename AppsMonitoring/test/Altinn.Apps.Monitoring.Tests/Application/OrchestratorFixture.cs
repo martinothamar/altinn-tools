@@ -32,24 +32,21 @@ internal sealed record OrchestratorFixture(
         return start;
     }
 
-    public Instant NextIteration()
+    public Instant AdvanceToNextIteration()
     {
         HostFixture.TimeProvider.Advance(PollInterval - (Latency * Queries.Count));
         return HostFixture.TimeProvider.GetCurrentInstant();
     }
 
-    public async ValueTask WaitForQueryResults(
-        List<ServiceOwnerQueryResult> queryResults,
-        CancellationToken cancellationToken
-    )
+    public async ValueTask WaitForIteration(List<OrchestratorEvent> events, CancellationToken cancellationToken)
     {
         var fakeConfig = HostFixture.Services.GetRequiredService<IOptions<FakeConfig>>().Value;
         var serviceOwners = fakeConfig.ServiceOwnersDiscovery?.Invoke(HostFixture.Services) ?? [];
-        var orchestratorResults = HostFixture.Orchestrator.Results;
+        var orchestratorResults = HostFixture.Orchestrator.Events;
 
         // Wait until all adapters are querying, then advance time
-        var expectedQueryResults = Queries.Count * serviceOwners.Count;
-        for (int i = 0; i < expectedQueryResults; i++)
+        var expectedEvents = Queries.Count * serviceOwners.Count;
+        for (int i = 0; i < expectedEvents; i++)
         {
             var wasSignaled = await AdapterSemaphore.WaitAsync(TimeSpan.FromSeconds(2), cancellationToken);
             Assert.True(wasSignaled);
@@ -61,10 +58,10 @@ internal sealed record OrchestratorFixture(
         HostFixture.TimeProvider.Advance(Latency);
 
         // Now the events should be available eventually (the adapters should be responding)
-        for (int i = 0; i < expectedQueryResults; i++)
+        for (int i = 0; i < expectedEvents; i++)
         {
             var result = await orchestratorResults.ReadAsync(cancellationToken);
-            queryResults.Add(result);
+            events.Add(result);
         }
     }
 

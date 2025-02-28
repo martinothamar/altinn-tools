@@ -24,7 +24,7 @@ internal sealed class Migrator(
 
             var upgrader = DeployChanges
                 .To.PostgresqlDatabase(_connectionString.Value)
-                .JournalToPostgresqlTable("monitor", "schema_version")
+                .JournalToPostgresqlTable(Repository.Schema, "schema_version")
                 .WithScriptsAndCodeEmbeddedInAssembly(Assembly.GetExecutingAssembly())
                 .LogTo(_logger)
                 .WithTransaction()
@@ -61,8 +61,8 @@ internal sealed class Script0001Initial : IScript
 {
     public string ProvideScript(Func<IDbCommand> dbCommandFactory)
     {
-        return """
-                CREATE TABLE monitor.telemetry (
+        return $"""
+                CREATE TABLE {Repository.Tables.Telemetry} (
                     id BIGSERIAL PRIMARY KEY,
                     ext_id TEXT NOT NULL,
                     service_owner TEXT NOT NULL,
@@ -76,10 +76,10 @@ internal sealed class Script0001Initial : IScript
                     UNIQUE (service_owner, ext_id)
                 );
 
-                CREATE INDEX idx_telemetry_time_generated ON monitor.telemetry (time_generated);
-                CREATE INDEX idx_telemetry_seeded ON monitor.telemetry (seeded);
+                CREATE INDEX idx_telemetry_time_generated ON {Repository.Tables.Telemetry} (time_generated);
+                CREATE INDEX idx_telemetry_seeded ON {Repository.Tables.Telemetry} (seeded);
 
-                CREATE TABLE monitor.queries (
+                CREATE TABLE {Repository.Tables.Queries} (
                     id BIGSERIAL PRIMARY KEY,
                     service_owner TEXT NOT NULL,
                     name TEXT NOT NULL,
@@ -88,15 +88,15 @@ internal sealed class Script0001Initial : IScript
                     UNIQUE (service_owner, hash)
                 );
 
-                CREATE TABLE monitor.alerts (
+                CREATE TABLE {Repository.Tables.Alerts} (
                     id BIGSERIAL PRIMARY KEY,
                     state INTEGER NOT NULL,
-                    telemetry_id BIGSERIAL NOT NULL REFERENCES monitor.telemetry (id),
+                    telemetry_id BIGSERIAL NOT NULL REFERENCES {Repository.Tables.Telemetry} (id),
                     data JSONB NOT NULL,
                     UNIQUE (telemetry_id)
                 );
 
-                CREATE INDEX idx_alerts_from_telemetry ON monitor.alerts (telemetry_id, state, (data->>'$type'));
+                CREATE INDEX idx_alerts_from_telemetry ON {Repository.Tables.Alerts} (telemetry_id, state, (data->>'$type'));
             """;
     }
 }

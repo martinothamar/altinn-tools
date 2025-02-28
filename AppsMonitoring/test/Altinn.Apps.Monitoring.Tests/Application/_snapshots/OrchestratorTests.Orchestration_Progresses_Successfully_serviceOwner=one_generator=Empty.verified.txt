@@ -8,7 +8,7 @@
       Queries: []
     },
     Input: {
-      ReportedResults: [
+      ReportedEvents: [
         {
           ServiceOwner: {
             Value: one
@@ -21,7 +21,11 @@
           },
           SearchFrom: 2024-10-03T11:59:59Z,
           SearchTo: 2025-01-01T11:50:00Z,
-          Telemetry: []
+          Telemetry: [],
+          Result: {
+            Ids: [],
+            DupeExtIds: []
+          }
         }
       ]
     },
@@ -55,7 +59,7 @@
       ]
     },
     Input: {
-      ReportedResults: [
+      ReportedEvents: [
         {
           ServiceOwner: {
             Value: one
@@ -68,7 +72,11 @@
           },
           SearchFrom: 2025-01-01T11:50:00Z,
           SearchTo: 2025-01-01T12:00:00Z,
-          Telemetry: []
+          Telemetry: [],
+          Result: {
+            Ids: [],
+            DupeExtIds: []
+          }
         }
       ]
     },

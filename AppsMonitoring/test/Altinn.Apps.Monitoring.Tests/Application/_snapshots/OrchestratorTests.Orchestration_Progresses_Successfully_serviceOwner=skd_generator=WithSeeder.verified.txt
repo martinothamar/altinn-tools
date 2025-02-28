@@ -42,7 +42,7 @@
       Queries: []
     },
     Input: {
-      ReportedResults: [
+      ReportedEvents: [
         {
           ServiceOwner: {
             Value: skd
@@ -76,7 +76,17 @@
               Seeded: false,
               Data: {Scrubbed}
             }
-          ]
+          ],
+          Result: {
+            Written: 1,
+            Ids: [
+              1,
+              5
+            ],
+            DupeExtIds: [
+              75563ff0b3251e04c70362c5a3495174-90c159bde9b1a6c1
+            ]
+          }
         }
       ]
     },

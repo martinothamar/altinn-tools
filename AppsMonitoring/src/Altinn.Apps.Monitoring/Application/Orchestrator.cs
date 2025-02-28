@@ -7,12 +7,13 @@ using Microsoft.Extensions.Options;
 
 namespace Altinn.Apps.Monitoring.Application;
 
-internal readonly record struct ServiceOwnerQueryResult(
+internal readonly record struct OrchestratorEvent(
     ServiceOwner ServiceOwner,
     Query Query,
     Instant SearchFrom,
     Instant SearchTo,
-    IReadOnlyList<TelemetryEntity> Telemetry
+    IReadOnlyList<TelemetryEntity> Telemetry,
+    InsertTelemetryResult Result
 );
 
 internal sealed class Orchestrator(
@@ -39,16 +40,16 @@ internal sealed class Orchestrator(
 
     private Task? _serviceOwnerDiscoveryThread;
     private ConcurrentDictionary<ServiceOwner, Task> _serviceOwnerThreads = new();
-    private Channel<ServiceOwnerQueryResult>? _results;
+    private Channel<OrchestratorEvent>? _events;
 
-    public ChannelReader<ServiceOwnerQueryResult> Results =>
-        _results?.Reader ?? throw new InvalidOperationException("Not started");
+    public ChannelReader<OrchestratorEvent> Events =>
+        _events?.Reader ?? throw new InvalidOperationException("Not started");
 
     private CancellationTokenSource? _cancellationTokenSource;
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        _results = Channel.CreateBounded<ServiceOwnerQueryResult>(
+        _events = Channel.CreateBounded<OrchestratorEvent>(
             new BoundedChannelOptions(128)
             {
                 FullMode = BoundedChannelFullMode.DropOldest,
@@ -59,7 +60,7 @@ internal sealed class Orchestrator(
         if (_appConfiguration.CurrentValue.DisableOrchestrator)
         {
             _logger.LogInformation("Orchestrator disabled");
-            _results.Writer.Complete();
+            _events.Writer.Complete();
             return Task.CompletedTask;
         }
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(
@@ -235,11 +236,17 @@ internal sealed class Orchestrator(
                             "Should have gotten rid of dupes"
                         );
 
-                        await _repository.InsertTelemetry(serviceOwner, query, searchTo, telemetry, cancellationToken);
+                        var result = await _repository.InsertTelemetry(
+                            serviceOwner,
+                            query,
+                            searchTo,
+                            telemetry,
+                            cancellationToken
+                        );
 
-                        Debug.Assert(_results is not null);
-                        await _results.Writer.WriteAsync(
-                            new ServiceOwnerQueryResult(serviceOwner, query, searchFrom, searchTo, telemetry),
+                        Debug.Assert(_events is not null);
+                        await _events.Writer.WriteAsync(
+                            new OrchestratorEvent(serviceOwner, query, searchFrom, searchTo, telemetry, result),
                             cancellationToken
                         );
                     }
@@ -269,8 +276,8 @@ internal sealed class Orchestrator(
         foreach (var (_, thread) in _serviceOwnerThreads)
             await thread;
 
-        if (_results is not null)
-            _results.Writer.TryComplete();
+        if (_events is not null)
+            _events.Writer.TryComplete();
     }
 
     public void Dispose()

@@ -8,7 +8,7 @@
       Queries: []
     },
     Input: {
-      ReportedResults: [
+      ReportedEvents: [
         {
           ServiceOwner: {
             Value: one
@@ -42,7 +42,15 @@
               Seeded: false,
               Data: {Scrubbed}
             }
-          ]
+          ],
+          Result: {
+            Written: 2,
+            Ids: [
+              1,
+              2
+            ],
+            DupeExtIds: []
+          }
         }
       ]
     },
@@ -122,7 +130,7 @@
       ]
     },
     Input: {
-      ReportedResults: [
+      ReportedEvents: [
         {
           ServiceOwner: {
             Value: one
@@ -156,7 +164,15 @@
               Seeded: false,
               Data: {Scrubbed}
             }
-          ]
+          ],
+          Result: {
+            Written: 2,
+            Ids: [
+              3,
+              4
+            ],
+            DupeExtIds: []
+          }
         }
       ]
     },

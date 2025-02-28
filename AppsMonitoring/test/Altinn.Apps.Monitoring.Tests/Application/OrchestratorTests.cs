@@ -126,7 +126,7 @@ public class OrchestratorTests
 
         var timeProvider = hostFixture.TimeProvider;
         var repository = hostFixture.Repository;
-        var results = hostFixture.Orchestrator.Results;
+        var results = hostFixture.Orchestrator.Events;
         var seeder = hostFixture.Seeder;
 
         if (generator == TelemetryGenerator.WithSeeder)
@@ -140,8 +140,8 @@ public class OrchestratorTests
             var (telemetryBefore, queryStateBefore) = await GetState(repository, cancellationToken);
             var start = fixture.Start();
 
-            List<ServiceOwnerQueryResult> queryResults = new();
-            await fixture.WaitForQueryResults(queryResults, cancellationToken);
+            List<OrchestratorEvent> events = new();
+            await fixture.WaitForIteration(events, cancellationToken);
 
             (telemetryAfter, queryStateAfter) = await GetState(repository, cancellationToken);
             var end = timeProvider.GetCurrentInstant();
@@ -151,7 +151,7 @@ public class OrchestratorTests
                     start,
                     end,
                     new(telemetryBefore, queryStateBefore),
-                    new(queryResults),
+                    new(events),
                     new(telemetryAfter, queryStateAfter)
                 )
             );
@@ -159,11 +159,11 @@ public class OrchestratorTests
 
         if (generator != TelemetryGenerator.WithSeeder)
         {
-            var start = fixture.NextIteration();
+            var start = fixture.AdvanceToNextIteration();
             var (telemetryBefore, queryStateBefore) = (telemetryAfter, queryStateAfter);
 
-            List<ServiceOwnerQueryResult> queryResults = new();
-            await fixture.WaitForQueryResults(queryResults, cancellationToken);
+            List<OrchestratorEvent> events = new();
+            await fixture.WaitForIteration(events, cancellationToken);
 
             (telemetryAfter, queryStateAfter) = await GetState(repository, cancellationToken);
             var end = timeProvider.GetCurrentInstant();
@@ -173,7 +173,7 @@ public class OrchestratorTests
                     start,
                     end,
                     new(telemetryBefore, queryStateBefore),
-                    new(queryResults),
+                    new(events),
                     new(telemetryAfter, queryStateAfter)
                 )
             );
@@ -196,5 +196,5 @@ public class OrchestratorTests
 
     private sealed record State(IReadOnlyList<TelemetryEntity> Telemetry, IReadOnlyList<QueryStateEntity> Queries);
 
-    private sealed record Input(IReadOnlyList<ServiceOwnerQueryResult> ReportedResults);
+    private sealed record Input(IReadOnlyList<OrchestratorEvent> ReportedEvents);
 }

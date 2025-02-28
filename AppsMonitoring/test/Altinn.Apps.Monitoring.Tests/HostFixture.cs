@@ -159,8 +159,8 @@ internal sealed class HostFixture : WebApplicationFactory<Program>
                 .WithDatabase("monitordb")
                 // We reset the environment as we don't want postgresql to actually create
                 // the database for us, as we are providing our own init script.
-                .WithAutoRemove(false)
-                .WithCleanUp(false)
+                // .WithAutoRemove(false)
+                // .WithCleanUp(false)
                 .WithEnvironment("POSTGRES_DB", PostgreSqlBuilder.DefaultDatabase)
                 .WithWaitStrategy(
                     Wait.ForUnixContainer().AddCustomWaitStrategy(new WaitUntil("monitordb", "platform_monitoring"))

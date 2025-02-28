@@ -12,5 +12,5 @@ internal sealed record AlerterEvent
 
 internal interface IAlerter : IHostedService
 {
-    ChannelReader<AlerterEvent> Results { get; }
+    ChannelReader<AlerterEvent> Events { get; }
 }

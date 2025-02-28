@@ -1,5 +1,5 @@
 ﻿{
-  QueryResults: [
+  OrchestratorEvents: [
     {
       ServiceOwner: {
         Value: skd
@@ -33,7 +33,17 @@
           Seeded: false,
           Data: {Scrubbed}
         }
-      ]
+      ],
+      Result: {
+        Written: 1,
+        Ids: [
+          1,
+          5
+        ],
+        DupeExtIds: [
+          75563ff0b3251e04c70362c5a3495174-90c159bde9b1a6c1
+        ]
+      }
     }
   ],
   AlerterEvents: [
@@ -153,34 +163,5 @@
         }
       }
     ]
-  },
-  IndexRecommendations: [
-    {
-      TableName: telemetry,
-      TooMuchSeq: 2,
-      Result: Missing Index?,
-      TableRelSize: 8192,
-      SeqScan: 4,
-      IndexScan: 2
-    },
-    {
-      TableName: alerts,
-      TooMuchSeq: 1,
-      Result: Missing Index?,
-      TableRelSize: 8192,
-      SeqScan: 1
-    },
-    {
-      TableName: schema_version,
-      Result: OK,
-      TableRelSize: 8192
-    },
-    {
-      TableName: queries,
-      TooMuchSeq: -2,
-      Result: OK,
-      TableRelSize: 8192,
-      IndexScan: 2
-    }
-  ]
+  }
 }

@@ -45,17 +45,16 @@ internal sealed class SlackAlerter(
     private readonly DistributedLocking _locking = locking;
     private readonly Repository _repository = repository;
 
-    private Channel<AlerterEvent>? _results;
+    private Channel<AlerterEvent>? _events;
 
-    public ChannelReader<AlerterEvent> Results =>
-        _results?.Reader ?? throw new InvalidOperationException("Not started");
+    public ChannelReader<AlerterEvent> Events => _events?.Reader ?? throw new InvalidOperationException("Not started");
 
     private CancellationTokenSource? _cancellationTokenSource;
     private Task? _thread;
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        _results = Channel.CreateBounded<AlerterEvent>(
+        _events = Channel.CreateBounded<AlerterEvent>(
             new BoundedChannelOptions(128)
             {
                 FullMode = BoundedChannelFullMode.DropOldest,
@@ -110,7 +109,7 @@ internal sealed class SlackAlerter(
                 if (workItems.Length == 0)
                     continue;
 
-                Debug.Assert(_results is not null);
+                Debug.Assert(_events is not null);
 
                 for (int i = 0; i < workItems.Length; i++)
                 {
@@ -143,7 +142,7 @@ internal sealed class SlackAlerter(
                                 AlertBefore = alert,
                                 AlertAfter = updatedAlert,
                             };
-                            await _results.Writer.WriteAsync(alertEvent, cancellationToken);
+                            await _events.Writer.WriteAsync(alertEvent, cancellationToken);
                             if (updatedAlert is null)
                                 break; // Try again later
 
@@ -305,8 +304,8 @@ internal sealed class SlackAlerter(
         if (_thread is not null)
             await _thread;
 
-        if (_results is not null)
-            _results.Writer.TryComplete();
+        if (_events is not null)
+            _events.Writer.TryComplete();
     }
 
     public void Dispose()

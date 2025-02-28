@@ -1,3 +1,4 @@
+using System.Text;
 using Altinn.Apps.Monitoring.Domain;
 using Npgsql;
 using NpgsqlTypes;
@@ -9,12 +10,25 @@ namespace Altinn.Apps.Monitoring.Application.Db;
 //   so columns/values are buffered when the row read
 #pragma warning disable CA1849 // Call async methods when in an async method
 
+internal sealed record InsertTelemetryResult(int Written, IReadOnlyList<long> Ids, IReadOnlySet<string> DupeExtIds);
+
 internal sealed class Repository(
     ILogger<Repository> logger,
     [FromKeyedServices(Config.UserMode)] NpgsqlDataSource userDataSource,
     [FromKeyedServices(Config.AdminMode)] NpgsqlDataSource adminDataSource
 )
 {
+    public const string Schema = "monitor";
+
+    internal static class Tables
+    {
+        internal const string Telemetry = $"{Schema}.telemetry";
+        internal const string Queries = $"{Schema}.queries";
+        internal const string Alerts = $"{Schema}.alerts";
+
+        internal static readonly string[] All = { Telemetry, Queries, Alerts };
+    }
+
     private readonly ILogger<Repository> _logger = logger;
     private readonly NpgsqlDataSource _userDataSource = userDataSource;
     private readonly NpgsqlDataSource _adminDataSource = adminDataSource;
@@ -30,10 +44,7 @@ internal sealed class Repository(
 
         await using var connection = await _userDataSource.OpenConnectionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
-        command.CommandText = """
-                SELECT *
-                FROM monitor.queries
-            """;
+        command.CommandText = $"SELECT * FROM {Tables.Queries}";
         if (serviceOwner is not null)
         {
             command.CommandText += " WHERE service_owner = @service_owner";
@@ -71,7 +82,7 @@ internal sealed class Repository(
     {
         await using var connection = await _userDataSource.OpenConnectionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT COUNT(*) FROM monitor.telemetry";
+        command.CommandText = $"SELECT COUNT(*) FROM {Tables.Telemetry}";
         await command.PrepareAsync(cancellationToken);
         var countObj = await command.ExecuteScalarAsync(cancellationToken);
         if (countObj is not long count)
@@ -103,7 +114,7 @@ internal sealed class Repository(
     {
         await using var connection = await _userDataSource.OpenConnectionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT * FROM monitor.telemetry";
+        command.CommandText = $"SELECT * FROM {Tables.Telemetry}";
         if (serviceOwner is not null)
         {
             command.CommandText += " WHERE service_owner = @service_owner";
@@ -124,7 +135,7 @@ internal sealed class Repository(
         return telemetry;
     }
 
-    public async ValueTask<int> InsertTelemetry(
+    public async ValueTask<InsertTelemetryResult> InsertTelemetry(
         ServiceOwner serviceOwner,
         Query query,
         Instant searchTo,
@@ -136,8 +147,9 @@ internal sealed class Repository(
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
         int written = 0;
-
         HashSet<string> dupes = [];
+        var ids = new List<long>(telemetry.Count);
+
         if (telemetry.Count > 0)
         {
             var ingestionTimestamp = telemetry[0].TimeIngested;
@@ -193,18 +205,20 @@ internal sealed class Repository(
             // 3. Insert data from temp table into telemetry table, with conflict resolution (do nothing)
             {
                 await using var command = connection.CreateCommand();
-                command.CommandText = """
-                        INSERT INTO monitor.telemetry (ext_id, service_owner, app_name, app_version, time_generated, time_ingested, dupe_count, seeded, data)
+                command.CommandText = $"""
+                        INSERT INTO {Tables.Telemetry} (ext_id, service_owner, app_name, app_version, time_generated, time_ingested, dupe_count, seeded, data)
                         SELECT ext_id, service_owner, app_name, app_version, time_generated, time_ingested, 0 as dupe_count, seeded, data FROM telemetry_import
-                        ON CONFLICT (service_owner, ext_id) DO UPDATE SET dupe_count = monitor.telemetry.dupe_count + 1
-                        RETURNING ext_id, time_ingested;
+                        ON CONFLICT (service_owner, ext_id) DO UPDATE SET dupe_count = {Tables.Telemetry}.dupe_count + 1
+                        RETURNING id, ext_id, time_ingested;
                     """;
                 await command.PrepareAsync(cancellationToken);
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
                 while (await reader.ReadAsync(cancellationToken))
                 {
-                    var extId = reader.GetFieldValue<string>(0);
-                    var timeIngested = reader.GetFieldValue<Instant>(1);
+                    var id = reader.GetFieldValue<long>(0);
+                    var extId = reader.GetFieldValue<string>(1);
+                    var timeIngested = reader.GetFieldValue<Instant>(2);
+                    ids.Add(id);
                     if (timeIngested != ingestionTimestamp)
                         dupes.Add(extId);
                 }
@@ -223,8 +237,8 @@ internal sealed class Repository(
         {
             var to = written > 0 ? telemetry.Where(t => !dupes.Contains(t.ExtId)).Max(t => t.TimeGenerated) : searchTo;
             await using var command = connection.CreateCommand();
-            command.CommandText = """
-                    INSERT INTO monitor.queries (service_owner, name, hash, queried_until)
+            command.CommandText = $"""
+                    INSERT INTO {Tables.Queries} (service_owner, name, hash, queried_until)
                     VALUES (@service_owner, @name, @hash, @queried_until)
                     ON CONFLICT (service_owner, hash) DO UPDATE SET name = EXCLUDED.name, queried_until = EXCLUDED.queried_until;
                 """;
@@ -238,7 +252,7 @@ internal sealed class Repository(
         }
 
         await transaction.CommitAsync(cancellationToken);
-        return written;
+        return new InsertTelemetryResult(written, ids, dupes);
     }
 
     public async ValueTask<int> SeedTelemetry(
@@ -248,7 +262,7 @@ internal sealed class Repository(
     {
         await using var connection = await _userDataSource.OpenConnectionAsync(cancellationToken);
         await using var import = connection.BeginBinaryImport(
-            "COPY monitor.telemetry (ext_id, service_owner, app_name, app_version, time_generated, time_ingested, dupe_count, seeded, data) FROM STDIN (FORMAT binary)"
+            $"COPY {Tables.Telemetry} (ext_id, service_owner, app_name, app_version, time_generated, time_ingested, dupe_count, seeded, data) FROM STDIN (FORMAT binary)"
         );
         for (int i = 0; i < telemetry.Count; i++)
         {
@@ -283,12 +297,12 @@ internal sealed class Repository(
 
         await using var connection = await _userDataSource.OpenConnectionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
-        command.CommandText = """
+        command.CommandText = $"""
                 SELECT
                     t.id as telemetry_id, t.ext_id as telemetry_ext_id, t.service_owner, t.app_name, t.app_version, t.time_generated, t.time_ingested, t.dupe_count, t.seeded, t.data,
                     a.id as alert_id, a.state as alert_state, a.data as alert_data
-                FROM monitor.telemetry t
-                LEFT JOIN monitor.alerts a ON t.id = a.telemetry_id
+                FROM {Tables.Telemetry} t
+                LEFT JOIN {Tables.Alerts} a ON t.id = a.telemetry_id
                 WHERE t.seeded = FALSE AND (a.id IS NULL OR (a.state < @state AND a.data->>'$type' = @type));
             """;
         //  For now we only care about pending alerts, since we don't have a mitigation flow yet
@@ -327,7 +341,7 @@ internal sealed class Repository(
     {
         await using var connection = await _userDataSource.OpenConnectionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT * FROM monitor.alerts";
+        command.CommandText = $"SELECT * FROM {Tables.Alerts}";
         await command.PrepareAsync(cancellationToken);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
 
@@ -353,8 +367,8 @@ internal sealed class Repository(
         await using var connection = await _userDataSource.OpenConnectionAsync(cancellationToken);
 
         await using var command = connection.CreateCommand();
-        command.CommandText = """
-                INSERT INTO monitor.alerts (state, telemetry_id, data)
+        command.CommandText = $"""
+                INSERT INTO {Tables.Alerts} (state, telemetry_id, data)
                 VALUES (@state, @telemetry_id, @data)
                 ON CONFLICT (telemetry_id) DO UPDATE SET state = EXCLUDED.state, data = EXCLUDED.data
             """;
@@ -370,39 +384,59 @@ internal sealed class Repository(
         CancellationToken cancellationToken
     )
     {
-        await using var connection = await _adminDataSource.OpenConnectionAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-                SELECT
-                    relname as table_name,
-                    seq_scan-idx_scan AS table_too_much_seq,
-                    case when seq_scan-idx_scan>0 THEN 'Missing Index?' ELSE 'OK' END as table_result,
-                    pg_relation_size(relid::regclass) AS table_rel_size,
-                    seq_scan as total_seq_scan,
-                    idx_scan as total_index_scan
-                FROM pg_stat_all_tables
-                WHERE schemaname='monitor'
-                ORDER BY table_too_much_seq DESC NULLS LAST;
-            """;
-
-        await command.PrepareAsync(cancellationToken);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-
-        List<IndexRecommendation> recommendations = new();
-        while (await reader.ReadAsync(cancellationToken))
+        foreach (var table in Tables.All)
         {
-            var tableName = reader.GetFieldValue<string>(0);
-            var tooMuchSeq = reader.GetFieldValue<long>(1);
-            var tableResult = reader.GetFieldValue<string>(2);
-            var tableSize = reader.GetFieldValue<long>(3);
-            var totalSeqScan = reader.GetFieldValue<long>(4);
-            var totalIndexScan = reader.GetFieldValue<long>(5);
-
-            recommendations.Add(
-                new IndexRecommendation(tableName, tooMuchSeq, tableResult, tableSize, totalSeqScan, totalIndexScan)
-            );
+            // Vacuum and analyze
+            await using var connection = await _adminDataSource.OpenConnectionAsync(cancellationToken);
+            await using var command = connection.CreateCommand();
+#pragma warning disable CA2100 // Review SQL queries for security vulnerabilities
+            command.CommandText = $"VACUUM FULL ANALYZE {table}";
+#pragma warning restore CA2100 // Review SQL queries for security vulnerabilities
+            await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        return recommendations;
+        // Wait for 'pg_stat_all_tables' to update
+        // Not sure if there are better ways..
+        // It's OK for this to take some time as all the tests are taking atleast >10s
+        await Task.Delay(5000, cancellationToken);
+
+        {
+            // Query for recommendations
+            await using var connection = await _adminDataSource.OpenConnectionAsync(cancellationToken);
+            await using var command = connection.CreateCommand();
+
+            command.CommandText = $"""
+                    SELECT
+                        relname as table_name,
+                        seq_scan-idx_scan AS table_too_much_seq,
+                        case when seq_scan-idx_scan>0 THEN 'Missing Index?' ELSE 'OK' END as table_result,
+                        pg_relation_size(relid::regclass) AS table_rel_size,
+                        seq_scan as total_seq_scan,
+                        idx_scan as total_index_scan
+                    FROM pg_stat_all_tables
+                    WHERE schemaname='{Schema}'
+                    ORDER BY table_too_much_seq DESC NULLS LAST;
+                """;
+
+            await command.PrepareAsync(cancellationToken);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+            List<IndexRecommendation> recommendations = new();
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var tableName = reader.GetFieldValue<string>(0);
+                var tooMuchSeq = reader.GetFieldValue<long>(1);
+                var tableResult = reader.GetFieldValue<string>(2);
+                var tableSize = reader.GetFieldValue<long>(3);
+                var totalSeqScan = reader.GetFieldValue<long>(4);
+                var totalIndexScan = reader.GetFieldValue<long>(5);
+
+                recommendations.Add(
+                    new IndexRecommendation(tableName, tooMuchSeq, tableResult, tableSize, totalSeqScan, totalIndexScan)
+                );
+            }
+
+            return recommendations;
+        }
     }
 }
