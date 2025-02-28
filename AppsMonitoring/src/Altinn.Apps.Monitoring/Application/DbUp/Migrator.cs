@@ -3,18 +3,23 @@ using System.Reflection;
 using Altinn.Apps.Monitoring.Application.Db;
 using DbUp;
 using DbUp.Engine;
+using Microsoft.Extensions.Options;
 
 namespace Altinn.Apps.Monitoring.Application.DbUp;
 
 internal sealed class Migrator(
     ILogger<Migrator> logger,
     DistributedLocking locking,
-    [FromKeyedServices(Config.AdminMode)] ConnectionString connectionString
+    [FromKeyedServices(Config.AdminMode)] ConnectionString connectionStringAdmin,
+    IOptions<AppConfiguration> appConfiguration
 ) : IHostedService
 {
     private readonly ILogger<Migrator> _logger = logger;
     private readonly DistributedLocking _locking = locking;
-    private readonly ConnectionString _connectionString = connectionString;
+    private readonly ConnectionString _connectionStringAdmin = connectionStringAdmin;
+    private readonly AppConfiguration _appConfiguration = appConfiguration.Value;
+
+    internal static AsyncLocal<(DbConfiguration Admin, DbConfiguration User)> Configurations { get; } = new();
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -22,8 +27,10 @@ internal sealed class Migrator(
         {
             await using var _ = await _locking.Lock(DistributedLockName.DbMigrator, cancellationToken);
 
+            Configurations.Value = (_appConfiguration.DbAdmin, _appConfiguration.Db);
+
             var upgrader = DeployChanges
-                .To.PostgresqlDatabase(_connectionString.Value)
+                .To.PostgresqlDatabase(_connectionStringAdmin.Value)
                 .JournalToPostgresqlTable(Repository.Schema, "schema_version")
                 .WithScriptsAndCodeEmbeddedInAssembly(Assembly.GetExecutingAssembly())
                 .LogTo(_logger)
@@ -61,7 +68,15 @@ internal sealed class Script0001Initial : IScript
 {
     public string ProvideScript(Func<IDbCommand> dbCommandFactory)
     {
+        var (admin, user) = Migrator.Configurations.Value;
+
         return $"""
+                ALTER DEFAULT PRIVILEGES FOR USER {admin.Username} IN SCHEMA {Repository.Schema}
+                GRANT SELECT,INSERT,UPDATE,REFERENCES,DELETE,TRUNCATE,REFERENCES,TRIGGER ON TABLES TO {user.Username};
+
+                ALTER DEFAULT PRIVILEGES FOR USER {admin.Username} IN SCHEMA {Repository.Schema}
+                GRANT ALL ON SEQUENCES TO {user.Username};
+
                 CREATE TABLE {Repository.Tables.Telemetry} (
                     id BIGSERIAL PRIMARY KEY,
                     ext_id TEXT NOT NULL,

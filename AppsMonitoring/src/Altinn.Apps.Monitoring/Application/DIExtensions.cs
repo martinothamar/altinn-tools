@@ -3,7 +3,6 @@ using Altinn.Apps.Monitoring.Application.Db;
 using Altinn.Apps.Monitoring.Application.DbUp;
 using Altinn.Apps.Monitoring.Application.Slack;
 using Azure.Extensions.AspNetCore.Configuration.Secrets;
-using Azure.Identity;
 using Azure.Monitor.OpenTelemetry.AspNetCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -61,7 +60,9 @@ internal static class DIExtensions
 
     private static IHostApplicationBuilder AddConfig(this IHostApplicationBuilder builder)
     {
-        builder.Configuration.AddJsonFile("appsettings.Secret.json", optional: true, reloadOnChange: true);
+        if (!builder.IsTest())
+            builder.Configuration.AddJsonFile("appsettings.Secret.json", optional: true, reloadOnChange: true);
+
         builder
             .Services.AddOptions<AppConfiguration>()
             .BindConfiguration(nameof(AppConfiguration))
@@ -98,7 +99,7 @@ internal static class DIExtensions
                 (config, root) =>
                 {
                     // Update DbAdmin from PostgreSQLSettings
-                    if (!builder.Environment.IsDevelopment())
+                    if (!builder.IsLocal())
                     {
                         var settings = root.GetSection("PostgreSQLSettings");
                         config.DbAdmin = new DbConfiguration
@@ -127,7 +128,7 @@ internal static class DIExtensions
             )
             .ValidateOnStart();
 
-        if (!builder.Environment.IsDevelopment())
+        if (!builder.IsLocal())
         {
             var keyVaultName = builder.Configuration.GetSection(nameof(AppConfiguration))[
                 nameof(AppConfiguration.KeyVaultName)
@@ -137,7 +138,7 @@ internal static class DIExtensions
 
             builder.Configuration.AddAzureKeyVault(
                 new Uri($"https://{keyVaultName}.vault.azure.net/"),
-                new ManagedIdentityCredential(),
+                AzureClients.CreateCredential(),
                 new AzureKeyVaultConfigurationOptions { ReloadInterval = TimeSpan.FromMinutes(5) }
             );
         }
@@ -155,7 +156,7 @@ internal static class DIExtensions
         otel.WithMetrics(metrics => metrics.AddMeter("System.Runtime").AddNpgsqlInstrumentation());
         otel.WithTracing(traces => traces.AddNpgsql());
 
-        if (builder.Environment.IsDevelopment())
+        if (builder.IsLocal())
         {
             otel.UseOtlpExporter();
         }
@@ -163,7 +164,10 @@ internal static class DIExtensions
         {
             otel.UseAzureMonitor(options =>
             {
-                options.Credential = new ManagedIdentityCredential();
+                options.ConnectionString = builder.Configuration.GetSection(nameof(AppConfiguration))[
+                    "AzureMonitorConnectionString"
+                ];
+                options.Credential = AzureClients.CreateCredential();
             });
         }
         return builder;
@@ -180,7 +184,7 @@ internal static class DIExtensions
             connStringBuilder.Database = db.Database;
             connStringBuilder.Port = db.Port;
             connStringBuilder.IncludeErrorDetail = true;
-            if (!builder.Environment.IsDevelopment())
+            if (!builder.IsLocal())
                 connStringBuilder.SslMode = SslMode.Require;
 
             return new ConnectionString(connStringBuilder.ToString());
@@ -210,4 +214,9 @@ internal static class DIExtensions
 
         return builder;
     }
+
+    public static bool IsTest(this IHostApplicationBuilder builder) => builder.Configuration.GetValue<bool>("IsTest");
+
+    public static bool IsLocal(this IHostApplicationBuilder builder) =>
+        builder.Environment.IsDevelopment() || builder.IsTest();
 }

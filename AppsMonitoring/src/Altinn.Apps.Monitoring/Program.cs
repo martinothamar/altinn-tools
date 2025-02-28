@@ -6,7 +6,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
 
-if (!builder.Environment.IsDevelopment())
+if (!builder.IsLocal())
 {
     builder.Services.Configure<ForwardedHeadersOptions>(options =>
     {
@@ -20,7 +20,7 @@ builder.AddApplication();
 
 var app = builder.Build();
 
-if (!builder.Environment.IsDevelopment())
+if (!builder.IsLocal())
     app.UseForwardedHeaders();
 
 app.MapOpenApi();

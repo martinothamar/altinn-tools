@@ -79,6 +79,8 @@ internal sealed class HostFixture : WebApplicationFactory<Program>
             config.AddInMemoryCollection(
                 new Dictionary<string, string?>
                 {
+                    ["IsTest"] = "true",
+
                     [$"{dbAdmin}:{nameof(DbConfiguration.Host)}"] = connnStringBuilder.Host,
                     [$"{dbAdmin}:{nameof(DbConfiguration.Username)}"] = connnStringBuilder.Username,
                     [$"{dbAdmin}:{nameof(DbConfiguration.Password)}"] = connnStringBuilder.Password,

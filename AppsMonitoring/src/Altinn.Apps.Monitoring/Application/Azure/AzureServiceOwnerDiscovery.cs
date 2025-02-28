@@ -6,11 +6,13 @@ using Microsoft.Extensions.Options;
 namespace Altinn.Apps.Monitoring.Application.Azure;
 
 internal sealed class AzureServiceOwnerDiscovery(
+    ILogger<AzureServiceOwnerDiscovery> logger,
     IOptionsMonitor<AppConfiguration> config,
     AzureClients clients,
     AzureServiceOwnerResources serviceOwnerResources
 ) : IServiceOwnerDiscovery
 {
+    private readonly ILogger<AzureServiceOwnerDiscovery> _logger = logger;
     private readonly IOptionsMonitor<AppConfiguration> _config = config;
     private readonly ArmClient _armClient = clients.ArmClient;
     private readonly AzureServiceOwnerResources _serviceOwnerResources = serviceOwnerResources;
@@ -18,6 +20,13 @@ internal sealed class AzureServiceOwnerDiscovery(
     public async ValueTask<IReadOnlyList<ServiceOwner>> Discover(CancellationToken cancellationToken)
     {
         var env = _config.CurrentValue.AltinnEnvironment;
+        var envToMatch = env switch
+        {
+            "prod" => "prod",
+            "at24" => "test",
+            "tt02" => "test",
+            _ => throw new Exception("Unexpected environment: " + env),
+        };
         var serviceOwners = new ConcurrentBag<ServiceOwner>();
         await Parallel.ForEachAsync(
             _armClient.GetSubscriptions().GetAllAsync(cancellationToken),
@@ -25,7 +34,7 @@ internal sealed class AzureServiceOwnerDiscovery(
             {
                 if (!subscription.Data.DisplayName.StartsWith("altinn", StringComparison.OrdinalIgnoreCase))
                     return;
-                if (!subscription.Data.DisplayName.EndsWith(env, StringComparison.OrdinalIgnoreCase))
+                if (!subscription.Data.DisplayName.EndsWith(envToMatch, StringComparison.OrdinalIgnoreCase))
                     return;
 
                 var split = subscription.Data.DisplayName.Split('-');
@@ -50,6 +59,8 @@ internal sealed class AzureServiceOwnerDiscovery(
             }
         );
 
-        return serviceOwners.ToArray();
+        var result = serviceOwners.ToArray();
+        _logger.LogInformation("Discovered {Count} service owners", result.Length);
+        return result;
     }
 }

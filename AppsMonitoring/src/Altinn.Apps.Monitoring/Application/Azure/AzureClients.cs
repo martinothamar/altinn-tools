@@ -1,4 +1,3 @@
-using Azure.Core;
 using Azure.Identity;
 using Azure.Monitor.Query;
 using Azure.ResourceManager;
@@ -11,11 +10,28 @@ internal sealed record AzureClients
 
     public LogsQueryClient LogsQueryClient { get; }
 
-    public AzureClients(IHostEnvironment env)
+    public static DefaultAzureCredential CreateCredential()
     {
-        TokenCredential credential = env.IsDevelopment() ? new AzureCliCredential() : new ManagedIdentityCredential();
+        // return new AzureCliCredential();
+        return new DefaultAzureCredential(
+            new DefaultAzureCredentialOptions
+            {
+                ExcludeAzureDeveloperCliCredential = true,
+                ExcludeAzurePowerShellCredential = true,
+                ExcludeInteractiveBrowserCredential = true,
+                ExcludeSharedTokenCacheCredential = true,
+                ExcludeVisualStudioCodeCredential = true,
+                ExcludeVisualStudioCredential = true,
+                ExcludeEnvironmentCredential = true,
+                ExcludeManagedIdentityCredential = true,
+                // ExcludeAzureCliCredential = true,
+            }
+        );
+    }
 
-        ArmClient = new(credential);
-        LogsQueryClient = new(credential);
+    public AzureClients()
+    {
+        ArmClient = new(CreateCredential());
+        LogsQueryClient = new(CreateCredential());
     }
 }
