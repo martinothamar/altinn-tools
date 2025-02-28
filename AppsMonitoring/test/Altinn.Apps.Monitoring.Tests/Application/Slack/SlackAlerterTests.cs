@@ -29,15 +29,12 @@ public class SlackAlerterTests
 
         List<OrchestratorEvent> orchestratorEvents = new();
         List<AlerterEvent> alerterEvents = new();
-        {
-            // Let orchestrator start work
-            _ = fixture.StartOrchestrator();
 
-            await fixture.WaitForOrchestratorIteration(orchestratorEvents, cancellationToken);
-        }
-        {
-            await fixture.WaitForAlerterIteration(alerterEvents, cancellationToken);
-        }
+        // Let orchestrator start work
+        _ = fixture.StartOrchestrator();
+
+        await fixture.WaitForOrchestratorIteration(orchestratorEvents, cancellationToken);
+        await fixture.WaitForAlerterIteration(alerterEvents, cancellationToken);
 
         var expectedRetries = AppFixture.Slack.ExpectedRetries[@case];
 

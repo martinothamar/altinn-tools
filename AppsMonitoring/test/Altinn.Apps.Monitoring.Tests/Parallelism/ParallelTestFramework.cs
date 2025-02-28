@@ -23,7 +23,7 @@ internal sealed class ParallelTestFramework : XunitTestFramework
         {
             TaskScheduler = TaskScheduler.Current,
             CancellationToken = context.CancellationTokenSource.Token,
-            MaxDegreeOfParallelism = Environment.ProcessorCount * 2, // Heuristic: assume some degree of IO-boundness
+            MaxDegreeOfParallelism = Environment.ProcessorCount, // Heuristic: assume some degree of IO-boundness
         };
 }
 

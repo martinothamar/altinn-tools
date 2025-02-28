@@ -118,6 +118,7 @@ internal sealed class SlackAlerter(
                     {
                         if (alert is null)
                         {
+                            var now = _timeProvider.GetCurrentInstant();
                             alert = new AlertEntity
                             {
                                 Id = 0,
@@ -129,6 +130,8 @@ internal sealed class SlackAlerter(
                                     Message = null,
                                     ThreadTs = null,
                                 },
+                                CreatedAt = now,
+                                UpdatedAt = now,
                             };
                             workItems[i] = (item, alert);
                         }
@@ -236,6 +239,7 @@ internal sealed class SlackAlerter(
                         {
                             State = AlertState.Alerted,
                             Data = alertData with { Message = text, Channel = channel, ThreadTs = "none" },
+                            UpdatedAt = _timeProvider.GetCurrentInstant(),
                         };
                     }
                     using var response = await _httpClient.PostAsJsonAsync(
@@ -283,6 +287,7 @@ internal sealed class SlackAlerter(
                         {
                             State = AlertState.Alerted,
                             Data = alertData with { Message = text, Channel = channel, ThreadTs = ok.Ts },
+                            UpdatedAt = _timeProvider.GetCurrentInstant(),
                         };
                     }
                     else

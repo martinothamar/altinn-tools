@@ -20,6 +20,10 @@ internal sealed record AlertEntity
     public required long TelemetryId { get; init; }
 
     public required AlertData Data { get; init; }
+
+    public required Instant CreatedAt { get; init; }
+
+    public required Instant UpdatedAt { get; init; }
 }
 
 [JsonDerivedType(typeof(SlackAlerter.SlackAlertData), typeDiscriminator: Types.Slack)]

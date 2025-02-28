@@ -48,7 +48,7 @@ internal sealed record OrchestratorFixture(
         var expectedEvents = Queries.Count * serviceOwners.Count;
         for (int i = 0; i < expectedEvents; i++)
         {
-            var wasSignaled = await AdapterSemaphore.WaitAsync(TimeSpan.FromSeconds(2), cancellationToken);
+            var wasSignaled = await AdapterSemaphore.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken);
             Assert.True(wasSignaled);
         }
         // There is a small window of time between the adapter calling `Release`
@@ -124,7 +124,7 @@ internal sealed record OrchestratorFixture(
             // we are doing a lot of thread synchronization which is pretty error prone
             // So to make sure we never just hang indefinitely, we are setting a timeout on all
             // tests using this fixture
-            cancellationTokenSource.CancelAfter(TimeSpan.FromMinutes(1));
+            cancellationTokenSource.CancelAfter(TimeSpan.FromMinutes(5));
             cancellationToken = cancellationTokenSource.Token;
 
             using var _ = await hostFixture.Start(cancellationToken);

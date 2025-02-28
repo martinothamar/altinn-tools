@@ -300,7 +300,7 @@ internal sealed class Repository(
         command.CommandText = $"""
                 SELECT
                     t.id as telemetry_id, t.ext_id as telemetry_ext_id, t.service_owner, t.app_name, t.app_version, t.time_generated, t.time_ingested, t.dupe_count, t.seeded, t.data,
-                    a.id as alert_id, a.state as alert_state, a.data as alert_data
+                    a.id as alert_id, a.state as alert_state, a.data as alert_data, a.created_at as alert_created_at, a.updated_at as alert_updated_at
                 FROM {Tables.Telemetry} t
                 LEFT JOIN {Tables.Alerts} a ON t.id = a.telemetry_id
                 WHERE t.seeded = FALSE AND (a.id IS NULL OR (a.state < @state AND a.data->>'$type' = @type));
@@ -326,6 +326,8 @@ internal sealed class Repository(
                     State = (AlertState)reader.GetFieldValue<int>(11),
                     TelemetryId = telemetry.Id,
                     Data = reader.GetFieldValue<AlertData>(12),
+                    CreatedAt = reader.GetFieldValue<Instant>(13),
+                    UpdatedAt = reader.GetFieldValue<Instant>(14),
                 };
 
             if (alert is not null && !alert.Data.IsType(type))
@@ -354,6 +356,8 @@ internal sealed class Repository(
                 State = (AlertState)reader.GetFieldValue<int>(1),
                 TelemetryId = reader.GetFieldValue<long>(2),
                 Data = reader.GetFieldValue<AlertData>(3),
+                CreatedAt = reader.GetFieldValue<Instant>(4),
+                UpdatedAt = reader.GetFieldValue<Instant>(5),
             };
 
             alerts.Add(item);
@@ -368,13 +372,16 @@ internal sealed class Repository(
 
         await using var command = connection.CreateCommand();
         command.CommandText = $"""
-                INSERT INTO {Tables.Alerts} (state, telemetry_id, data)
-                VALUES (@state, @telemetry_id, @data)
-                ON CONFLICT (telemetry_id) DO UPDATE SET state = EXCLUDED.state, data = EXCLUDED.data
+                INSERT INTO {Tables.Alerts} (state, telemetry_id, data, created_at, updated_at)
+                VALUES (@state, @telemetry_id, @data, created_at, updated_at)
+                ON CONFLICT (telemetry_id) DO
+                UPDATE SET state = EXCLUDED.state, data = EXCLUDED.data, updated_at = EXCLUDED.updated_at
             """;
         command.Parameters.AddWithValue("state", (int)alert.State);
         command.Parameters.AddWithValue("telemetry_id", alert.TelemetryId);
         command.Parameters.AddWithValue("data", NpgsqlDbType.Jsonb, alert.Data);
+        command.Parameters.AddWithValue("created_at", alert.CreatedAt);
+        command.Parameters.AddWithValue("updated_at", alert.UpdatedAt);
 
         await command.PrepareAsync(cancellationToken);
         await command.ExecuteNonQueryAsync(cancellationToken);
