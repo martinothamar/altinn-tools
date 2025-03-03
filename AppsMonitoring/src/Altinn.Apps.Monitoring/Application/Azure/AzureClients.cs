@@ -10,28 +10,15 @@ internal sealed record AzureClients
 
     public LogsQueryClient LogsQueryClient { get; }
 
-    public static DefaultAzureCredential CreateCredential()
+    public static WorkloadIdentityCredential CreateCredential(IHostEnvironment env)
     {
         // return new AzureCliCredential();
-        return new DefaultAzureCredential(
-            new DefaultAzureCredentialOptions
-            {
-                ExcludeAzureDeveloperCliCredential = true,
-                ExcludeAzurePowerShellCredential = true,
-                ExcludeInteractiveBrowserCredential = true,
-                ExcludeSharedTokenCacheCredential = true,
-                ExcludeVisualStudioCodeCredential = true,
-                ExcludeVisualStudioCredential = true,
-                ExcludeEnvironmentCredential = true,
-                ExcludeManagedIdentityCredential = true,
-                // ExcludeAzureCliCredential = true,
-            }
-        );
+        return new WorkloadIdentityCredential();
     }
 
-    public AzureClients()
+    public AzureClients(IHostEnvironment env)
     {
-        ArmClient = new(CreateCredential());
-        LogsQueryClient = new(CreateCredential());
+        ArmClient = new(CreateCredential(env));
+        LogsQueryClient = new(CreateCredential(env));
     }
 }

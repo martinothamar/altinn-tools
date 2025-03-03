@@ -26,13 +26,23 @@ if (!builder.IsLocal())
 app.MapOpenApi();
 
 app.MapGet(
-        "/health",
+        "/health/ready",
         Results<Utf8ContentHttpResult, InternalServerError> () =>
         {
             // Check dependencies?
             return TypedResults.Text("Healthy"u8, contentType: "text/plain", statusCode: 200);
         }
     )
-    .WithName("Health");
+    .WithName("Health / Ready");
+
+app.MapGet(
+        "/health/live",
+        Results<Utf8ContentHttpResult, InternalServerError> () =>
+        {
+            // Check dependencies?
+            return TypedResults.Text("Healthy"u8, contentType: "text/plain", statusCode: 200);
+        }
+    )
+    .WithName("Startup / Live");
 
 app.Run();

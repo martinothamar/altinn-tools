@@ -51,7 +51,7 @@ internal sealed class HostFixture : WebApplicationFactory<Program>
         var client = CreateClient();
         try
         {
-            var response = await client.GetStringAsync(new Uri("/health", UriKind.Relative), cancellationToken);
+            var response = await client.GetStringAsync(new Uri("/health/ready", UriKind.Relative), cancellationToken);
             Assert.Equal("Healthy", response);
             return client;
         }

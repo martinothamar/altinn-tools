@@ -61,7 +61,10 @@ internal static class DIExtensions
     private static IHostApplicationBuilder AddConfig(this IHostApplicationBuilder builder)
     {
         if (!builder.IsTest())
+        {
             builder.Configuration.AddJsonFile("appsettings.Secret.json", optional: true, reloadOnChange: true);
+            builder.Configuration.AddJsonFile("config/appsettings.Secret.json", optional: true, reloadOnChange: true);
+        }
 
         builder
             .Services.AddOptions<AppConfiguration>()
@@ -138,7 +141,7 @@ internal static class DIExtensions
 
             builder.Configuration.AddAzureKeyVault(
                 new Uri($"https://{keyVaultName}.vault.azure.net/"),
-                AzureClients.CreateCredential(),
+                AzureClients.CreateCredential(builder.Environment),
                 new AzureKeyVaultConfigurationOptions { ReloadInterval = TimeSpan.FromMinutes(5) }
             );
         }
@@ -167,7 +170,7 @@ internal static class DIExtensions
                 options.ConnectionString = builder.Configuration.GetSection(nameof(AppConfiguration))[
                     "AzureMonitorConnectionString"
                 ];
-                options.Credential = AzureClients.CreateCredential();
+                options.Credential = AzureClients.CreateCredential(builder.Environment);
             });
         }
         return builder;
