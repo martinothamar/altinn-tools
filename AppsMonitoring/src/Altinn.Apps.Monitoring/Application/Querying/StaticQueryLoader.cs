@@ -1,49 +1,6 @@
-using System.Globalization;
-using System.IO.Hashing;
-using System.Text;
 using Microsoft.Extensions.Options;
 
 namespace Altinn.Apps.Monitoring.Application;
-
-internal enum QueryType
-{
-    Traces = 1,
-    Logs = 2,
-    Metrics = 3,
-}
-
-#pragma warning disable CA1724 // Type name conflicts with namespace name
-internal sealed record Query
-#pragma warning restore CA1724 // Type name conflicts with namespace name
-{
-    public string Name { get; }
-    public QueryType Type { get; }
-    public string QueryTemplate { get; }
-    public string Hash { get; }
-
-    public string Format(Instant searchFrom, Instant searchTo) =>
-        // Default instant string format is ISO 8601
-        string.Format(CultureInfo.InvariantCulture, QueryTemplate, searchFrom.ToString(), searchTo.ToString());
-
-    public Query(string name, QueryType type, string queryTemplate)
-    {
-        Name = name;
-        Type = type;
-        QueryTemplate = queryTemplate;
-        Hash = HashQuery(queryTemplate);
-    }
-
-    private static string HashQuery(string queryTemplate)
-    {
-        var hash = XxHash128.Hash(Encoding.UTF8.GetBytes(queryTemplate));
-        return Convert.ToBase64String(hash);
-    }
-}
-
-internal interface IQueryLoader
-{
-    ValueTask<IReadOnlyList<Query>> Load(CancellationToken cancellationToken);
-}
 
 internal sealed class StaticQueryLoader(ILogger<StaticQueryLoader> logger, IOptionsMonitor<AppConfiguration> config)
     : IQueryLoader

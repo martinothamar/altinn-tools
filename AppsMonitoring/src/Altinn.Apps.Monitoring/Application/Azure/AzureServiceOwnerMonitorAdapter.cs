@@ -6,6 +6,7 @@ using Altinn.Apps.Monitoring.Domain;
 using Azure;
 using Azure.Monitor.Query;
 using Azure.Monitor.Query.Models;
+using Azure.ResourceManager.OperationalInsights;
 
 namespace Altinn.Apps.Monitoring.Application.Azure;
 
@@ -33,6 +34,26 @@ internal sealed partial class AzureServiceOwnerMonitorAdapter(
 
         var (_, _, workspace) = resources;
 
+        switch (query.Type)
+        {
+            case QueryType.Traces:
+                return await QueryTraces(serviceOwner, query, workspace, from, to, cancellationToken);
+            case QueryType.Metrics:
+                return await QueryMetrics(serviceOwner, query, workspace, from, to, cancellationToken);
+            default:
+                throw new NotSupportedException($"Query type {query.Type} not supported");
+        }
+    }
+
+    private async ValueTask<IReadOnlyList<IReadOnlyList<TelemetryEntity>>> QueryTraces(
+        ServiceOwner serviceOwner,
+        Query query,
+        OperationalInsightsWorkspaceResource workspace,
+        Instant from,
+        Instant to,
+        CancellationToken cancellationToken
+    )
+    {
         var searchTimestamp = _timeProvider.GetCurrentInstant();
 
         Response<LogsQueryResult> results = await _logsClient.QueryResourceAsync(
@@ -47,7 +68,6 @@ internal sealed partial class AzureServiceOwnerMonitorAdapter(
             return [];
         var totalRows = tables.Sum(table => table.Rows.Count);
 
-        int tableCount = 0;
         var telemetry = new List<IReadOnlyList<TelemetryEntity>>(totalRows);
         var instanceIdRegex = InstanceIdInUrlRegex();
         for (int i = 0; i < tables.Count; i++)
@@ -56,31 +76,52 @@ internal sealed partial class AzureServiceOwnerMonitorAdapter(
             if (table.Rows.Count == 0)
                 continue;
 
-            switch (query.Type)
-            {
-                case QueryType.Traces:
-                    telemetry.Add(ReadTraces(serviceOwner, searchTimestamp, i, ref tableCount, table, instanceIdRegex));
-                    break;
-                default:
-                    throw new NotSupportedException($"Query type {query.Type} is not supported");
-            }
+            telemetry.Add(ReadTraces(serviceOwner, i, table, instanceIdRegex));
         }
 
         return telemetry;
     }
 
-    static List<TelemetryEntity> ReadTraces(
+    private async ValueTask<IReadOnlyList<IReadOnlyList<TelemetryEntity>>> QueryMetrics(
         ServiceOwner serviceOwner,
-        Instant searchTimestamp,
-        int i,
-        ref int tableCount,
-        LogsTable table,
-        Regex instanceIdRegex
+        Query query,
+        OperationalInsightsWorkspaceResource workspace,
+        Instant from,
+        Instant to,
+        CancellationToken cancellationToken
     )
     {
-        var telemetry = new List<TelemetryEntity>(table.Rows.Count);
+        var searchTimestamp = _timeProvider.GetCurrentInstant();
 
-        tableCount++;
+        Response<LogsQueryResult> results = await _logsClient.QueryResourceAsync(
+            workspace.Id,
+            query.Format(from, to),
+            new QueryTimeRange((to - from).Plus(Duration.FromMinutes(5)).ToTimeSpan()),
+            cancellationToken: cancellationToken
+        );
+
+        var tables = results?.Value?.AllTables;
+        if (tables is null)
+            return [];
+        var totalRows = tables.Sum(table => table.Rows.Count);
+
+        var telemetry = new List<IReadOnlyList<TelemetryEntity>>(totalRows);
+        var instanceIdRegex = InstanceIdInUrlRegex();
+        for (int i = 0; i < tables.Count; i++)
+        {
+            var table = tables[i];
+            if (table.Rows.Count == 0)
+                continue;
+
+            telemetry.Add(ReadMetrics(serviceOwner, query, i, table));
+        }
+
+        return telemetry;
+    }
+
+    static List<TelemetryEntity> ReadTraces(ServiceOwner serviceOwner, int i, LogsTable table, Regex instanceIdRegex)
+    {
+        var telemetry = new List<TelemetryEntity>(table.Rows.Count);
 
         var indexes = table.Columns.Index();
         int nameIdx = -1;
@@ -193,6 +234,68 @@ internal sealed partial class AzureServiceOwnerMonitorAdapter(
                             ["Properties"] = ReadString(row, propertiesIdx),
                             ["RootTraceRequestUrl"] = rootTraceRequestUrl,
                         },
+                    },
+                }
+            );
+        }
+
+        return telemetry;
+    }
+
+    static List<TelemetryEntity> ReadMetrics(ServiceOwner serviceOwner, Query query, int i, LogsTable table)
+    {
+        var telemetry = new List<TelemetryEntity>(table.Rows.Count);
+
+        var indexes = table.Columns.Index();
+        int timeGeneratedIdx = -1;
+        int appIdx = -1;
+        int appVersionIdx = -1;
+        int nameIdx = -1;
+        int valueIdx = -1;
+
+        foreach (var (rowIndex, column) in indexes)
+        {
+            if (column.Name == "TimeGenerated")
+                timeGeneratedIdx = rowIndex;
+            else if (column.Name == "App")
+                appIdx = rowIndex;
+            else if (column.Name == "AppVersion")
+                appVersionIdx = rowIndex;
+            else if (column.Name == "Name")
+                nameIdx = rowIndex;
+            else if (column.Name == "Value")
+                valueIdx = rowIndex;
+        }
+
+        for (int j = 0; j < table.Rows.Count; j++)
+        {
+            var row = table.Rows[j];
+
+            var timeGenerated = ReadInstant(row, timeGeneratedIdx);
+            var app = ReadString(row, appIdx);
+            var appVersion = ReadString(row, appVersionIdx);
+            var name = ReadString(row, nameIdx);
+            var value = ReadDouble(row, valueIdx);
+
+            telemetry.Add(
+                new TelemetryEntity
+                {
+                    Id = 0,
+                    // NOTE: granularity must not change for a given query
+                    ExtId = $"{app}-{appVersion}-{timeGenerated}-{name}-{query.Hash}",
+                    ServiceOwner = serviceOwner.Value,
+                    AppName = app,
+                    AppVersion = appVersion,
+                    TimeGenerated = timeGenerated,
+                    TimeIngested = Instant.MinValue,
+                    DupeCount = 0,
+                    Seeded = false,
+                    Data = new MetricData
+                    {
+                        AltinnErrorId = -1,
+                        Name = name,
+                        Value = value,
+                        Attributes = null,
                     },
                 }
             );
