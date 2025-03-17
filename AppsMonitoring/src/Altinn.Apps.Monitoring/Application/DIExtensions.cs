@@ -107,14 +107,14 @@ internal static class DIExtensions
 
         if (!builder.IsLocal())
         {
-            var keyVaultName = builder.Configuration.GetSection(nameof(AppConfiguration))[
-                nameof(AppConfiguration.KeyVaultName)
+            var keyVaultUri = builder.Configuration.GetSection(nameof(AppConfiguration))[
+                nameof(AppConfiguration.KeyVaultUri)
             ];
-            if (string.IsNullOrWhiteSpace(keyVaultName))
-                throw new InvalidOperationException("Missing key vault name in configuration");
+            if (string.IsNullOrWhiteSpace(keyVaultUri))
+                throw new InvalidOperationException("Missing key vault URI in configuration");
 
             builder.Configuration.AddAzureKeyVault(
-                new Uri($"https://{keyVaultName}.vault.azure.net/"),
+                new Uri(keyVaultUri),
                 AzureClients.CreateCredential(builder.Environment),
                 new AzureKeyVaultConfigurationOptions { ReloadInterval = TimeSpan.FromMinutes(5) }
             );

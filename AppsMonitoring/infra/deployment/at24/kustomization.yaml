@@ -5,9 +5,3 @@ resources:
   - ../base
 patches:
   - path: env.yaml
-secretGenerator:
-- name: apps-monitor-appsettings
-  files:
-  - appsettings.Secret.json
-generatorOptions:
-  disableNameSuffixHash: true

@@ -15,7 +15,7 @@ internal sealed class AppConfiguration
     public DbConfiguration DbAdmin { get; set; } = null!;
     public string SeedSqliteDbPath { get; set; } = Path.Combine("data", "data.db");
 
-    public string KeyVaultName { get; set; } = null!;
+    public string KeyVaultUri { get; set; } = null!;
 
     public bool DisableOrchestrator { get; set; }
     public bool DisableSeeder { get; set; }

@@ -47,6 +47,11 @@ spec:
           env:
             - name: ASPNETCORE_URLS
               value: http://*:5156
+            - name: AppConfiguration__KeyVaultUri
+              valueFrom:
+                secretKeyRef:
+                  name: apps-monitor-kvconfig
+                  key: keyvault_uri
           readinessProbe:
             httpGet:
               path: /health/ready
