@@ -74,14 +74,6 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /data
-            - name: appsettings
-              readOnly: true
-              # Must mount to subfolder of app,
-              # otherwise the volume mount will overwrite everything there
-              mountPath: "/app/config"
       volumes:
         - name: data
           emptyDir: {}
-        - name: appsettings
-          secret:
-            secretName: apps-monitor-appsettings
