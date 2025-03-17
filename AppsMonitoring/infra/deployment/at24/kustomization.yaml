@@ -5,7 +5,6 @@ resources:
   - ../base
 patches:
   - path: env.yaml
-  - path: serviceaccount.yaml
 secretGenerator:
 - name: apps-monitor-appsettings
   files:

@@ -98,37 +98,11 @@ internal static class DIExtensions
 
                 return true;
             })
-            .PostConfigure<IConfiguration>(
-                (config, root) =>
-                {
-                    // Update DbAdmin from PostgreSQLSettings
-                    if (!builder.IsLocal())
-                    {
-                        var settings = root.GetSection("PostgreSQLSettings");
-                        config.DbAdmin = new DbConfiguration
-                        {
-                            Host = config.DbAdmin.Host,
-                            Username = "monitor_admin",
-                            Password =
-                                settings["AppsMonitorDbAdminPwd"]
-                                ?? throw new InvalidOperationException(
-                                    "Missing AppsMonitorDbAdminPwd in configuration"
-                                ),
-                            Database = "monitordb",
-                        };
-
-                        config.Db = new DbConfiguration
-                        {
-                            Host = config.Db.Host,
-                            Username = "monitor",
-                            Password =
-                                settings["AppsMonitorDbPwd"]
-                                ?? throw new InvalidOperationException("Missing AppsMonitorDbPwd in configuration"),
-                            Database = "monitordb",
-                        };
-                    }
-                }
-            )
+            // TODO ifbm deploy/plattfrom:
+            // * Host og username også i KV
+            // * Client ID som patch på kustomize i cluster (source)
+            // * Vi legger slack i KV manuelt
+            // * Vi pusher /configs/altinn-apps-monitor /deploymappa
             .ValidateOnStart();
 
         if (!builder.IsLocal())

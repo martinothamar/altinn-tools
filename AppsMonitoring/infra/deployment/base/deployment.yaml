@@ -20,7 +20,7 @@ spec:
         app: apps-monitor
         azure.workload.identity/use: "true"
     spec:
-      serviceAccountName: apps-monitor
+      serviceAccountName: apps-monitor-sa
       # .NET docker images run with '1654', can verify with
       # docker image inspect mcr.microsoft.com/dotnet/aspnet:9.0-noble-chiseled-extra
       # Which is what we use in the Dockerfile

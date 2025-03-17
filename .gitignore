@@ -361,4 +361,3 @@ AppsMonitoring/**/appsettings.Secret.json
 AppsMonitoring/src/**/data/data.db
 AppsMonitoring/infra/appsettings.*.json
 AppsMonitoring/infra/**/result.yaml
-AppsMonitoring/infra/deployment/*/serviceaccount.yaml
