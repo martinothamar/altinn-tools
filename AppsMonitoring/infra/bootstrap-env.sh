@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# Just to initialize some variables in we expect in Azure KV
+# Prereqs:
+# * Azure CLI
+# Ex: ./bootstrap-env.sh <key-vault-name>
+
 set -e
 
 echo "Vault: $1"

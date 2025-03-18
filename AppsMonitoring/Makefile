@@ -30,14 +30,3 @@ build-manifests: push-image
 deploy-manifests: build-manifests
 	kubectl apply -k infra/deployment/at24
 
-flux-push: push-image
-	cd infra/deployment/
-	flux push artifact oci://altinntjenesterregistry.azurecr.io/configs/altinn-apps-monitor:$(git rev-parse --short HEAD) \
-		--provider=generic \
-		--reproducible \
-		--path="." \
-		--source="$(git config --get remote.origin.url)" \
-		--revision="$(git branch --show-current)/$(git rev-parse HEAD)" || echo "Failed to push artifact" >&2
-	flux tag artifact oci://altinntjenesterregistry.azurecr.io/configs/altinn-apps-monitor:$(git rev-parse --short HEAD) \
-		--provider=generic \
-		--tag at24 || echo "Failed to tag artifact" >&2

@@ -52,6 +52,14 @@ spec:
                 secretKeyRef:
                   name: apps-monitor-kvconfig
                   key: keyvault_uri
+            - name: K8S_POD
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: K8S_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           readinessProbe:
             httpGet:
               path: /health/ready
@@ -72,8 +80,9 @@ spec:
               cpu: 100m
               memory: 128Mi
           volumeMounts:
-            - name: data
-              mountPath: /data
+            - name: telemetry
+              mountPath: /telemetry
       volumes:
-        - name: data
-          emptyDir: {}
+        - name: telemetry
+          emptyDir:
+            sizeLimit: 128Mi
