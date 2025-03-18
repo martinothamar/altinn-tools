@@ -35,7 +35,8 @@ internal sealed class ParallelTestFrameworkExecutor : XunitTestFrameworkExecutor
     public override async ValueTask RunTestCases(
         IReadOnlyCollection<IXunitTestCase> testCases,
         IMessageSink executionMessageSink,
-        ITestFrameworkExecutionOptions executionOptions
+        ITestFrameworkExecutionOptions executionOptions,
+        CancellationToken cancellationToken
     )
     {
         // SetEnvironment(EnvironmentVariables.AssertEquivalentMaxDepth, executionOptions.AssertEquivalentMaxDepth());
@@ -44,7 +45,13 @@ internal sealed class ParallelTestFrameworkExecutor : XunitTestFrameworkExecutor
         // SetEnvironment(EnvironmentVariables.PrintMaxObjectMemberCount, executionOptions.PrintMaxObjectMemberCount());
         // SetEnvironment(EnvironmentVariables.PrintMaxStringLength, executionOptions.PrintMaxStringLength());
 
-        await ParallelTestAssemblyRunner.Instance.Run(TestAssembly, testCases, executionMessageSink, executionOptions);
+        await ParallelTestAssemblyRunner.Instance.Run(
+            TestAssembly,
+            testCases,
+            executionMessageSink,
+            executionOptions,
+            cancellationToken
+        );
     }
 }
 

@@ -18,6 +18,7 @@ spec:
     metadata:
       labels:
         app: apps-monitor
+        # We use workload identity, but service account is created through Terraform
         azure.workload.identity/use: "true"
     spec:
       serviceAccountName: apps-monitor-sa
@@ -33,13 +34,13 @@ spec:
         - name: apps-monitor
           image: altinntjenesterregistry.azurecr.io/altinn-apps-monitor:latest
           imagePullPolicy: Always
-        #   securityContext:
-        #     allowPrivilegeEscalation: false
-        #     readOnlyRootFilesystem: true
-        #     privileged: false
-        #     capabilities:
-        #       drop:
-        #         - ALL
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            privileged: false
+            capabilities:
+              drop:
+                - ALL
           ports:
             - name: http
               containerPort: 5156
