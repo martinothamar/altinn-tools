@@ -3,12 +3,10 @@ using Altinn.Apps.Monitoring.Application.Db;
 using Altinn.Apps.Monitoring.Application.DbUp;
 using Altinn.Apps.Monitoring.Application.Slack;
 using Azure.Extensions.AspNetCore.Configuration.Secrets;
-using Azure.Monitor.OpenTelemetry.AspNetCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using OpenTelemetry;
-using OpenTelemetry.Resources;
 
 namespace Altinn.Apps.Monitoring.Application;
 
@@ -130,16 +128,6 @@ internal static class DIExtensions
         builder.Logging.AddSimpleConsole();
 
         var otel = builder.Services.AddOpenTelemetry();
-
-        var name = Environment.GetEnvironmentVariable("K8S_POD") ?? "apps-monitor";
-        var ns = Environment.GetEnvironmentVariable("K8S_NAMESPACE") ?? "apps-monitor";
-        var resourceAttributes = new Dictionary<string, object>
-        {
-            { "service.name", ns },
-            { "service.namespace", "altinn" },
-            { "service.instance.id", name },
-        };
-        otel.ConfigureResource(resourceBuilder => resourceBuilder.AddAttributes(resourceAttributes));
 
         otel.WithMetrics(metrics => metrics.AddMeter("System.Runtime").AddNpgsqlInstrumentation());
         otel.WithTracing(traces => traces.AddNpgsql());
