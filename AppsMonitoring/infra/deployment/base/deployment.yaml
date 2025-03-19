@@ -20,6 +20,8 @@ spec:
         app: apps-monitor
         # We use workload identity, but service account is created through Terraform
         azure.workload.identity/use: "true"
+      annotations:
+        linkerd.io/inject: enabled
     spec:
       serviceAccountName: apps-monitor-sa
       # .NET docker images run with '1654', can verify with
@@ -54,7 +56,9 @@ spec:
                   name: apps-monitor-kvconfig
                   key: keyvault_uri
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://otel-collector.monitoring.svc.cluster.local:4317"
+              value: http://otel-collector.monitoring.svc.cluster.local:4317
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: grpc
             - name: K8S_NODE_NAME
               valueFrom:
                 fieldRef:
