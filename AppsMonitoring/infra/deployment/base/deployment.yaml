@@ -2,6 +2,9 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: apps-monitor
+  annotations:
+    altinn.no/image: altinntjenesterregistry.azurecr.io/altinn-apps-monitor:latest
+    altinn.no/image-tag: latest
 spec:
   minReadySeconds: 3
   revisionHistoryLimit: 5
@@ -34,7 +37,7 @@ spec:
         runAsNonRoot: true
       containers:
         - name: apps-monitor
-          image: altinntjenesterregistry.azurecr.io/altinn-apps-monitor:latest
+          image: ""
           imagePullPolicy: Always
           securityContext:
             allowPrivilegeEscalation: false
@@ -81,7 +84,7 @@ spec:
                 fieldRef:
                   fieldPath: metadata.uid
             - name: K8S_CONTAINER_IMAGE_TAG
-              value: latest
+              value: ""
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: >-
                 k8s.node.name=$(K8S_NODE_NAME);
