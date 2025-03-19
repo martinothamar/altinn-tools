@@ -10,7 +10,7 @@ RUN dotnet restore
 
 COPY src/Altinn.Apps.Monitoring/. ./
 RUN dotnet publish -c Release -o /app --no-restore
-RUN echo "{\"LogDirectory\":\"/telemetry\",\"FileSize\":32768,\"LogLevel\":\"Verbose\"}" > /app/OTEL_DIAGNOSTICS.json
+RUN echo "{\"LogDirectory\":\"/telemetry\",\"FileSize\":32768,\"LogLevel\":\"Warning\"}" > /app/OTEL_DIAGNOSTICS.json
 
 FROM mcr.microsoft.com/dotnet/aspnet:9.0-noble-chiseled-extra
 WORKDIR /app

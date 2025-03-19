@@ -86,15 +86,14 @@ spec:
             - name: K8S_CONTAINER_IMAGE_TAG
               value: ""
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: >-
-                k8s.node.name=$(K8S_NODE_NAME);
-                k8s.namespace.name=$(K8S_NAMESPACE_NAME);
-                k8s.pod.name=$(K8S_POD_NAME);
-                k8s.pod.uid=$(K8S_POD_UID);
-                service.namespace=altinn;
-                service.name=apps-monitor;
-                service.instance.id=$(K8S_POD_NAME);
-                service.version=$(K8S_CONTAINER_IMAGE_TAG);
+              value: "k8s.node.name=$(K8S_NODE_NAME),\
+                k8s.namespace.name=$(K8S_NAMESPACE_NAME),\
+                k8s.pod.name=$(K8S_POD_NAME),\
+                k8s.pod.uid=$(K8S_POD_UID),\
+                service.namespace=altinn,\
+                service.name=apps-monitor,\
+                service.instance.id=$(K8S_POD_NAME),\
+                service.version=$(K8S_CONTAINER_IMAGE_TAG)"
           readinessProbe:
             httpGet:
               path: /health/ready
