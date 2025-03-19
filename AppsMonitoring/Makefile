@@ -24,9 +24,9 @@ acr-login:
 push-image: build-image
 	docker push altinntjenesterregistry.azurecr.io/altinn-apps-monitor:latest
 
-build-manifests: push-image
+build-manifests:
 	kubectl kustomize infra/deployment/at24 > infra/deployment/at24/result.yaml
 
-deploy-manifests: build-manifests
-	kubectl apply -k infra/deployment/at24
-
+POD := $(shell kubectl get po -o name --no-headers=true -l app=apps-monitor -n apps-monitor)
+debug-container:
+	KUBECTL_DEBUG_CUSTOM_PROFILE=true kubectl debug --custom infra/debug-profile.json $(POD) -n apps-monitor -it --image=nicolaka/netshoot

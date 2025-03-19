@@ -11,11 +11,19 @@ using NodaTime.Serialization.SystemTextJson;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
-
 if (!builder.IsLocal())
 {
+    // File.WriteAllText(
+    //     "OTEL_DIAGNOSTICS.json",
+    //     """
+    //     {
+    //         "LogDirectory": "/telemetry-debug",
+    //         "FileSize": 32768,
+    //         "LogLevel": "Warning"
+    //     }
+    //     """
+    // );
+
     builder.Services.Configure<ForwardedHeadersOptions>(options =>
     {
         options.ForwardedHeaders = ForwardedHeaders.All;
@@ -23,6 +31,9 @@ if (!builder.IsLocal())
         options.KnownProxies.Clear();
     });
 }
+
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
 
 builder.AddApplication();
 

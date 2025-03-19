@@ -144,21 +144,9 @@ internal static class DIExtensions
         otel.WithMetrics(metrics => metrics.AddMeter("System.Runtime").AddNpgsqlInstrumentation());
         otel.WithTracing(traces => traces.AddNpgsql());
 
-        if (builder.IsLocal())
-        {
+        if (!builder.IsTest())
             otel.UseOtlpExporter();
-        }
-        else
-        {
-            otel.UseAzureMonitor(options =>
-            {
-                options.ConnectionString = builder.Configuration.GetSection(nameof(AppConfiguration))[
-                    "AzureMonitorConnectionString"
-                ];
-                options.Credential = AzureClients.CreateCredential(builder.Environment);
-                options.StorageDirectory = "/telemetry";
-            });
-        }
+
         return builder;
     }
 
