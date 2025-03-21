@@ -9,16 +9,19 @@ internal sealed class AzureServiceOwnerDiscovery(
     ILogger<AzureServiceOwnerDiscovery> logger,
     IOptionsMonitor<AppConfiguration> config,
     AzureClients clients,
-    AzureServiceOwnerResources serviceOwnerResources
+    AzureServiceOwnerResources serviceOwnerResources,
+    Telemetry telemetry
 ) : IServiceOwnerDiscovery
 {
     private readonly ILogger<AzureServiceOwnerDiscovery> _logger = logger;
     private readonly IOptionsMonitor<AppConfiguration> _config = config;
     private readonly ArmClient _armClient = clients.ArmClient;
     private readonly AzureServiceOwnerResources _serviceOwnerResources = serviceOwnerResources;
+    private readonly Telemetry _telemetry = telemetry;
 
     public async ValueTask<IReadOnlyList<ServiceOwner>> Discover(CancellationToken cancellationToken)
     {
+        using var activity = _telemetry.Activities.StartActivity("AzureServiceOwnerDiscovery.Discover");
         var env = _config.CurrentValue.AltinnEnvironment;
         var envToMatch = env switch
         {
@@ -60,6 +63,7 @@ internal sealed class AzureServiceOwnerDiscovery(
         );
 
         var result = serviceOwners.ToArray();
+        activity?.SetTag("serviceowners.count", result.Length);
         _logger.LogInformation("Discovered {Count} service owners", result.Length);
         return result;
     }

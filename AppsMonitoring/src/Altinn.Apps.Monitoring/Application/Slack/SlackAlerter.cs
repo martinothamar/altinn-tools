@@ -16,7 +16,8 @@ internal sealed class SlackAlerter(
     IHostApplicationLifetime lifetime,
     TimeProvider timeProvider,
     DistributedLocking locking,
-    Repository repository
+    Repository repository,
+    Telemetry telemetry
 ) : IAlerter, IDisposable
 {
     // NOTE: if retry behavior is changed, also update the expected retry behavior in the SlackAlerterTests
@@ -44,6 +45,7 @@ internal sealed class SlackAlerter(
     private readonly TimeProvider _timeProvider = timeProvider;
     private readonly DistributedLocking _locking = locking;
     private readonly Repository _repository = repository;
+    private readonly Telemetry _telemetry = telemetry;
 
     private Channel<AlerterEvent>? _events;
 
@@ -54,6 +56,7 @@ internal sealed class SlackAlerter(
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
+        using var activity = _telemetry.Activities.StartActivity("SlackAlerter.Start");
         _events = Channel.CreateBounded<AlerterEvent>(
             new BoundedChannelOptions(128)
             {
@@ -85,10 +88,11 @@ internal sealed class SlackAlerter(
 
     private async Task Thread(CancellationToken cancellationToken)
     {
+        var startActivity = _telemetry.StartRootActivity("SlackAlerter.Thread.Start");
         var config = _config.CurrentValue;
         try
         {
-            await using var handle = await _locking.Lock(DistributedLockName.Alerter, cancellationToken);
+            await using var handle = await _locking.AcquireLock(DistributedLockName.Alerter, cancellationToken);
             if (handle.HandleLostToken.CanBeCanceled)
             {
                 _logger.LogInformation("Will monitor for lost alerter lock");
@@ -103,8 +107,12 @@ internal sealed class SlackAlerter(
 
             using var timer = new PeriodicTimer(config.PollInterval / 2, _timeProvider);
 
+            startActivity?.Dispose();
+            startActivity = null;
             do
             {
+                using var iterationActivity = _telemetry.StartRootActivity("SlackAlerter.Thread.Iteration");
+
                 var workItems = await _repository.ListAlerterWorkItems(AlertData.Types.Slack, cancellationToken);
                 if (workItems.Length == 0)
                     continue;
@@ -114,6 +122,12 @@ internal sealed class SlackAlerter(
                 for (int i = 0; i < workItems.Length; i++)
                 {
                     var (item, alert) = workItems[i];
+                    using var activity = _telemetry.Activities.StartActivity("SlackAlerter.Thread.WorkItem");
+                    activity?.SetTag("telemetry.id", item.Id);
+                    activity?.SetTag("telemetry.extid", item.ExtId);
+                    activity?.SetTag("serviceowner", item.ServiceOwner);
+                    activity?.SetTag("alert.id", alert?.Id ?? -1);
+                    activity?.SetTag("alert.state", alert?.State.ToString() ?? "");
                     try
                     {
                         if (alert is null)
@@ -157,6 +171,7 @@ internal sealed class SlackAlerter(
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
+                        activity?.AddException(ex);
                         _logger.LogError(
                             ex,
                             "Failed to process alerter work item, TelemetryId='{TelemetryId}', AlertId='{}'",
@@ -173,8 +188,13 @@ internal sealed class SlackAlerter(
         }
         catch (Exception ex)
         {
+            startActivity?.AddException(ex);
             _logger.LogError(ex, "Alerter thread failed");
             _lifetime.StopApplication();
+        }
+        finally
+        {
+            startActivity?.Dispose();
         }
     }
 

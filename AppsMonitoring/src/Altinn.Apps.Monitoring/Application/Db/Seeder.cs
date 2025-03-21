@@ -8,22 +8,25 @@ internal sealed class Seeder(
     ILogger<Seeder> logger,
     IOptions<AppConfiguration> config,
     Repository repository,
-    DistributedLocking locking
+    DistributedLocking locking,
+    Telemetry telemetry
 ) : IHostedService
 {
     private readonly ILogger<Seeder> _logger = logger;
     private readonly Repository _repository = repository;
     private readonly AppConfiguration _config = config.Value;
     private readonly DistributedLocking _locking = locking;
+    private readonly Telemetry _telemetry = telemetry;
     private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public Task Completion => _completion.Task;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        using var activity = _telemetry.Activities.StartActivity("Seeder.Run");
         try
         {
-            await using var handle = await _locking.Lock(DistributedLockName.DbSeeder, cancellationToken);
+            await using var handle = await _locking.AcquireLock(DistributedLockName.DbSeeder, cancellationToken);
 
             if (_config.DisableSeeder)
             {

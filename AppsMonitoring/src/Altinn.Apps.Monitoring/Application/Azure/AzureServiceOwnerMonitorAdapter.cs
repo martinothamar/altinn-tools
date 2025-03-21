@@ -13,12 +13,14 @@ namespace Altinn.Apps.Monitoring.Application.Azure;
 internal sealed partial class AzureServiceOwnerMonitorAdapter(
     AzureClients clients,
     AzureServiceOwnerResources serviceOwnerResources,
-    TimeProvider timeProvider
+    TimeProvider timeProvider,
+    Telemetry telemetry
 ) : IServiceOwnerLogsAdapter, IServiceOwnerTraceAdapter, IServiceOwnerMetricsAdapter
 {
     private readonly LogsQueryClient _logsClient = clients.LogsQueryClient;
     private readonly AzureServiceOwnerResources _serviceOwnerResources = serviceOwnerResources;
     private readonly TimeProvider _timeProvider = timeProvider;
+    private readonly Telemetry _telemetry = telemetry;
 
     public async ValueTask<IReadOnlyList<IReadOnlyList<TelemetryEntity>>> Query(
         ServiceOwner serviceOwner,
@@ -28,6 +30,12 @@ internal sealed partial class AzureServiceOwnerMonitorAdapter(
         CancellationToken cancellationToken
     )
     {
+        using var activity = _telemetry.Activities.StartActivity("AzureServiceOwnerMonitorAdapter.Query");
+        activity?.SetTag("serviceowner", serviceOwner.Value);
+        activity?.SetTag("query.name", query.Name);
+        activity?.SetTag("query.from", from.ToString());
+        activity?.SetTag("query.to", to.ToString());
+
         var resources = await _serviceOwnerResources.GetResources(serviceOwner, cancellationToken);
         if (resources is null)
             return [];

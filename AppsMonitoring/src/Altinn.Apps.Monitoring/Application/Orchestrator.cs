@@ -25,7 +25,8 @@ internal sealed class Orchestrator(
     Repository repository,
     IQueryLoader queryLoader,
     TimeProvider timeProvider,
-    DistributedLocking locking
+    DistributedLocking locking,
+    Telemetry telemetry
 ) : IHostedService, IDisposable
 {
     private readonly ILogger<Orchestrator> _logger = logger;
@@ -37,6 +38,7 @@ internal sealed class Orchestrator(
     private readonly IQueryLoader _queryLoader = queryLoader;
     private readonly TimeProvider _timeProvider = timeProvider;
     private readonly DistributedLocking _locking = locking;
+    private readonly Telemetry _telemetry = telemetry;
 
     private Task? _serviceOwnerDiscoveryThread;
     private ConcurrentDictionary<ServiceOwner, Task> _serviceOwnerThreads = new();
@@ -49,6 +51,8 @@ internal sealed class Orchestrator(
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
+        using var activity = _telemetry.Activities.StartActivity("Orchestrator.Start");
+
         _events = Channel.CreateBounded<OrchestratorEvent>(
             new BoundedChannelOptions(128)
             {
@@ -78,13 +82,15 @@ internal sealed class Orchestrator(
 
     private async Task ServiceOwnerDiscoveryThread(CancellationToken cancellationToken)
     {
+        var startActivity = _telemetry.StartRootActivity("Orchestrator.ServiceOwnerDiscoveryThread.Start");
+
         var options = _appConfiguration.CurrentValue;
         if (options.OrchestratorStartSignal is not null)
             await options.OrchestratorStartSignal.Task;
 
         try
         {
-            await using var handle = await _locking.Lock(DistributedLockName.Orchestrator, cancellationToken);
+            await using var handle = await _locking.AcquireLock(DistributedLockName.Orchestrator, cancellationToken);
             if (handle.HandleLostToken.CanBeCanceled)
             {
                 _logger.LogInformation("Will monitor for lost orchestrator lock");
@@ -99,8 +105,12 @@ internal sealed class Orchestrator(
 
             using var timer = new PeriodicTimer(options.PollInterval, _timeProvider);
 
+            startActivity?.Dispose();
+            startActivity = null;
             do
             {
+                using var activity = _telemetry.StartRootActivity("Orchestrator.ServiceOwnerDiscoveryThread.Iteration");
+
                 var serviceOwners = await _serviceOwnerDiscovery.Discover(cancellationToken);
 
                 foreach (var serviceOwner in serviceOwners)
@@ -126,13 +136,21 @@ internal sealed class Orchestrator(
         }
         catch (Exception ex)
         {
+            startActivity?.AddException(ex);
             _logger.LogError(ex, "Service owner discovery thread failed");
             _lifetime.StopApplication();
+        }
+        finally
+        {
+            startActivity?.Dispose();
         }
     }
 
     private async Task ServiceOwnerThread(ServiceOwner serviceOwner, CancellationToken cancellationToken)
     {
+        var startActivity = _telemetry.StartRootActivity("Orchestrator.ServiceOwnerThread.Start");
+        startActivity?.SetTag("serviceowner", serviceOwner.Value);
+
         var options = _appConfiguration.CurrentValue;
 
         if (options.OrchestratorStartSignal is not null)
@@ -144,8 +162,13 @@ internal sealed class Orchestrator(
         {
             _logger.LogInformation("[{ServiceOwner}] starting querying thread", serviceOwner);
 
+            startActivity?.Dispose();
+            startActivity = null;
             do
             {
+                using var activity = _telemetry.StartRootActivity("Orchestrator.ServiceOwnerThread.Iteration");
+                activity?.SetTag("serviceowner", serviceOwner.Value);
+
                 IReadOnlyList<Query> queries;
                 try
                 {
@@ -158,6 +181,10 @@ internal sealed class Orchestrator(
                 }
                 foreach (var query in queries)
                 {
+                    using var queryActivity = _telemetry.Activities.StartActivity(
+                        "Orchestrator.ServiceOwnerThread.Query"
+                    );
+                    queryActivity?.SetTag("query", query.Name);
                     try
                     {
                         var queryStates = await _repository.ListQueryStates(serviceOwner, query, cancellationToken);
@@ -252,6 +279,7 @@ internal sealed class Orchestrator(
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
+                        queryActivity?.AddException(ex);
                         _logger.LogError(ex, "[{ServiceOwner}] failed to query, trying again soon...", serviceOwner);
                     }
                 }
@@ -263,8 +291,13 @@ internal sealed class Orchestrator(
         }
         catch (Exception ex)
         {
+            startActivity?.AddException(ex);
             _logger.LogError(ex, "[{ServiceOwner}] thread failed, crashing..", serviceOwner);
             _lifetime.StopApplication();
+        }
+        finally
+        {
+            startActivity?.Dispose();
         }
     }
 

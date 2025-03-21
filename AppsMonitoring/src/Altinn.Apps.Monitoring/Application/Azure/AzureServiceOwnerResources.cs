@@ -11,12 +11,14 @@ namespace Altinn.Apps.Monitoring.Application.Azure;
 internal sealed class AzureServiceOwnerResources(
     IOptionsMonitor<AppConfiguration> config,
     AzureClients clients,
-    HybridCache cache
+    HybridCache cache,
+    Telemetry telemetry
 )
 {
     private readonly IOptionsMonitor<AppConfiguration> _config = config;
     private readonly ArmClient _armClient = clients.ArmClient;
     private readonly HybridCache _cache = cache;
+    private readonly Telemetry _telemetry = telemetry;
 
     private readonly HybridCacheEntryOptions _cacheEntryOptions = new()
     {
@@ -29,6 +31,8 @@ internal sealed class AzureServiceOwnerResources(
         CancellationToken cancellationToken
     )
     {
+        using var activity = _telemetry.Activities.StartActivity("AzureServiceOwnerResources.GetResources");
+        activity?.SetTag("serviceowner", serviceOwner.Value);
         return _cache.GetOrCreateAsync(
             $"{nameof(AzureServiceOwnerResources)}-{serviceOwner.Value}",
             (this, serviceOwner),

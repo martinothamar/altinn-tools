@@ -12,17 +12,22 @@ internal enum DistributedLockName : long
 
 internal sealed class DistributedLocking(
     ILogger<DistributedLocking> logger,
-    [FromKeyedServices(Config.UserMode)] ConnectionString connectionString
+    [FromKeyedServices(Config.UserMode)] ConnectionString connectionString,
+    Telemetry telemetry
 )
 {
     private readonly ILogger<DistributedLocking> _logger = logger;
     private readonly ConnectionString _connectionString = connectionString;
+    private readonly Telemetry _telemetry = telemetry;
 
-    public async ValueTask<IDistributedLockHandle> Lock(
+    public async ValueTask<IDistributedLockHandle> AcquireLock(
         DistributedLockName lockName,
         CancellationToken cancellationToken
     )
     {
+        using var activity = _telemetry.Activities.StartActivity("DistributedLocking.AcquireLock");
+        activity?.SetTag("lock.name", lockName.ToString());
+
         var @lock = new PostgresDistributedLock(
             new PostgresAdvisoryLockKey((long)lockName),
             _connectionString.Value,

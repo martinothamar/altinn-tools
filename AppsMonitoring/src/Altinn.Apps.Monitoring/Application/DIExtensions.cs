@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Altinn.Apps.Monitoring.Application.Azure;
 using Altinn.Apps.Monitoring.Application.Db;
 using Altinn.Apps.Monitoring.Application.DbUp;
@@ -6,7 +7,9 @@ using Azure.Extensions.AspNetCore.Configuration.Secrets;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Npgsql;
-using OpenTelemetry;
+using OpenTelemetry.Logs;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Trace;
 
 namespace Altinn.Apps.Monitoring.Application;
 
@@ -97,11 +100,6 @@ internal static class DIExtensions
 
                 return true;
             })
-            // TODO ifbm deploy/plattfrom:
-            // * Host og username også i KV
-            // * Client ID som patch på kustomize i cluster (source)
-            // * Vi legger slack i KV manuelt
-            // * Vi pusher /configs/altinn-apps-monitor /deploymappa
             .ValidateOnStart();
 
         if (!builder.IsLocal())
@@ -124,16 +122,54 @@ internal static class DIExtensions
 
     private static IHostApplicationBuilder AddOtel(this IHostApplicationBuilder builder)
     {
+        builder.Services.AddSingleton<Telemetry>();
+
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole();
 
         var otel = builder.Services.AddOpenTelemetry();
 
-        otel.WithMetrics(metrics => metrics.AddMeter("System.Runtime").AddNpgsqlInstrumentation());
-        otel.WithTracing(traces => traces.AddNpgsql());
-
-        if (!builder.IsTest())
-            otel.UseOtlpExporter();
+        otel.WithMetrics(metrics =>
+        {
+            metrics.AddMeter("System.Runtime");
+            metrics.AddMeter("Microsoft.AspNetCore.Hosting");
+            metrics.AddMeter("Microsoft-Extensions-HybridCache");
+            metrics.AddMeter("System.Net.Http");
+            metrics.AddNpgsqlInstrumentation();
+            // No exporter yet in real envs
+        });
+        otel.WithTracing(traces =>
+        {
+            traces.AddSource(Telemetry.ActivitySourceName);
+            traces.AddSource("Azure.*");
+            traces.AddAspNetCoreInstrumentation();
+            traces.AddHttpClientInstrumentation(o =>
+                o.FilterHttpRequestMessage = (_) =>
+                {
+                    // Taken from: https://github.com/Azure/azure-sdk-for-net/blob/ce26920571d07a97c2834867bf3f09a651ac3eee/sdk/monitor/Azure.Monitor.OpenTelemetry.AspNetCore/src/OpenTelemetryBuilderExtensions.cs#L102
+                    var parentActivity = Activity.Current?.Parent;
+                    if (
+                        parentActivity is not null
+                        && parentActivity.Source.Name.Equals("Azure.Core.Http", StringComparison.Ordinal)
+                    )
+                    {
+                        return false;
+                    }
+                    return true;
+                }
+            );
+            traces.AddNpgsql();
+            if (!builder.IsTest())
+                traces.AddOtlpExporter();
+        });
+        otel.WithLogging(
+            logging =>
+            {
+                if (!builder.IsTest())
+                    logging.AddOtlpExporter();
+            },
+            options => options.IncludeFormattedMessage = true
+        );
 
         return builder;
     }

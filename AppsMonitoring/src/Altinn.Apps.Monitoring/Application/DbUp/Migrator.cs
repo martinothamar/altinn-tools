@@ -11,21 +11,24 @@ internal sealed class Migrator(
     ILogger<Migrator> logger,
     DistributedLocking locking,
     [FromKeyedServices(Config.AdminMode)] ConnectionString connectionStringAdmin,
-    IOptions<AppConfiguration> appConfiguration
+    IOptions<AppConfiguration> appConfiguration,
+    Telemetry telemetry
 ) : IHostedService
 {
     private readonly ILogger<Migrator> _logger = logger;
     private readonly DistributedLocking _locking = locking;
     private readonly ConnectionString _connectionStringAdmin = connectionStringAdmin;
     private readonly AppConfiguration _appConfiguration = appConfiguration.Value;
+    private readonly Telemetry _telemetry = telemetry;
 
     internal static AsyncLocal<(DbConfiguration Admin, DbConfiguration User)> Configurations { get; } = new();
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        using var activity = _telemetry.Activities.StartActivity("Migrator.Run");
         try
         {
-            await using var _ = await _locking.Lock(DistributedLockName.DbMigrator, cancellationToken);
+            await using var _ = await _locking.AcquireLock(DistributedLockName.DbMigrator, cancellationToken);
 
             Configurations.Value = (_appConfiguration.DbAdmin, _appConfiguration.Db);
 
