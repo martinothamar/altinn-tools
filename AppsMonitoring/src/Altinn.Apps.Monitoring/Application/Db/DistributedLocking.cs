@@ -61,7 +61,7 @@ internal sealed class DistributedLocking(
             var hasLockObj = await cmd.ExecuteScalarAsync(cancellationToken);
             if (hasLockObj is not bool hasLock)
             {
-                _logger.LogError("Unexpected result from acquiring lock");
+                _logger.LogError("Unexpected result from acquiring lock: {ResultType}", hasLockObj?.GetType().Name);
                 throw new Exception("Couldn't acquire lock");
             }
 
@@ -131,28 +131,45 @@ internal sealed class DistributedLocking(
                                 FROM pg_locks
                                 WHERE locktype = 'advisory'
                                     AND ((classid::bigint << 32) | objid::bigint) = @lockName
-                                    AND pid = pg_backend_pid();
+                                    AND pid = pg_backend_pid()
+                                    AND granted = true;
                             """;
                             command.Parameters.AddWithValue("lockName", (long)_lockName);
                             await command.PrepareAsync(cancellationToken);
                             var lockCountObj = await command.ExecuteScalarAsync(cancellationToken);
-                            if (lockCountObj is not int lockCount)
+                            if (lockCountObj is not long lockCount)
                             {
-                                _parent._logger.LogError("Unexpected result from monitoring lock");
+                                _parent._logger.LogError(
+                                    "Unexpected result from monitoring lock: {ResultType}",
+                                    lockCountObj?.GetType().Name
+                                );
                                 throw new Exception("Couldn't monitor lock");
                             }
 
-                            if (!cancellationToken.IsCancellationRequested && lockCount != 1)
+                            if (cancellationToken.IsCancellationRequested)
+                                break;
+
+                            if (lockCount != 1)
                             {
-                                _parent._logger.LogWarning("Lock was lost: {LockName}", _lockName);
+                                _parent._logger.LogWarning(
+                                    "Lock was lost? LockName={LockName}, Result={Result}",
+                                    _lockName,
+                                    lockCount
+                                );
+                            }
+                            else
+                            {
+                                _parent._logger.LogInformation(
+                                    "Monitored for lock: LockName={LockName}, Result={Result}",
+                                    _lockName,
+                                    lockCount
+                                );
                             }
                         }
                         finally
                         {
                             lck.Release();
                         }
-
-                        await Task.Delay(TimeSpan.FromSeconds(30), _parent._timeProvider, cancellationToken);
                     }
                     catch (OperationCanceledException) { }
                     catch (ObjectDisposedException) when (_lock is null) { }
@@ -160,6 +177,9 @@ internal sealed class DistributedLocking(
                     {
                         _parent._logger.LogError(ex, "Failed to monitor lock {LockName}", _lockName);
                     }
+
+                    if (!cancellationToken.IsCancellationRequested)
+                        await Task.Delay(TimeSpan.FromSeconds(30), _parent._timeProvider, cancellationToken);
                 }
             });
         }
@@ -206,7 +226,10 @@ internal sealed class DistributedLocking(
                 var wasReleasedObj = await cmd.ExecuteScalarAsync();
                 if (wasReleasedObj is not bool wasReleased)
                 {
-                    _parent._logger.LogError("Unexpected result from releasing lock");
+                    _parent._logger.LogError(
+                        "Unexpected result from releasing lock: {ResultType}",
+                        wasReleasedObj?.GetType().Name
+                    );
                     throw new Exception("Couldn't release lock");
                 }
                 if (!wasReleased)
