@@ -150,9 +150,17 @@ internal static class DIExtensions
         {
             traces.AddSource(Telemetry.ActivitySourceName);
             traces.AddSource("Azure.*");
-            traces.AddAspNetCoreInstrumentation();
-            traces.AddHttpClientInstrumentation(o =>
-                o.FilterHttpRequestMessage = (_) =>
+            traces.AddAspNetCoreInstrumentation(options =>
+            {
+                options.Filter = context =>
+                {
+                    if (context.Request.Path.StartsWithSegments("/health", StringComparison.OrdinalIgnoreCase))
+                        return false;
+                    return true;
+                };
+            });
+            traces.AddHttpClientInstrumentation(options =>
+                options.FilterHttpRequestMessage = (_) =>
                 {
                     // Taken from: https://github.com/Azure/azure-sdk-for-net/blob/ce26920571d07a97c2834867bf3f09a651ac3eee/sdk/monitor/Azure.Monitor.OpenTelemetry.AspNetCore/src/OpenTelemetryBuilderExtensions.cs#L102
                     var parentActivity = Activity.Current?.Parent;

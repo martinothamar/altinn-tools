@@ -28,13 +28,15 @@ internal sealed class DistributedLocking(
         using var activity = _telemetry.Activities.StartActivity("DistributedLocking.AcquireLock");
         activity?.SetTag("lock.name", lockName.ToString());
 
+        var connString = $"{_connectionString.Value};Tcp Keepalive=true";
+
         var @lock = new PostgresDistributedLock(
             new PostgresAdvisoryLockKey((long)lockName),
-            _connectionString.Value,
+            connString,
             options =>
             {
-                options.KeepaliveCadence(TimeSpan.FromMinutes(1));
-                options.UseMultiplexing(true);
+                options.KeepaliveCadence(TimeSpan.FromSeconds(30));
+                options.UseMultiplexing(false);
             }
         );
 

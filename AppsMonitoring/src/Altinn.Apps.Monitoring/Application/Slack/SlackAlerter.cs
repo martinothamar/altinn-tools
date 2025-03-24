@@ -45,7 +45,10 @@ internal sealed class SlackAlerter(
     private readonly TimeProvider _timeProvider = timeProvider;
     private readonly DistributedLocking _locking = locking;
     private readonly Repository _repository = repository;
+#pragma warning disable CA2213 // Disposable fields should be disposed
+    // DI container owns telemetry
     private readonly Telemetry _telemetry = telemetry;
+#pragma warning restore CA2213 // Disposable fields should be disposed
 
     private Channel<AlerterEvent>? _events;
 
@@ -88,7 +91,7 @@ internal sealed class SlackAlerter(
 
     private async Task Thread(CancellationToken cancellationToken)
     {
-        var startActivity = _telemetry.StartRootActivity("SlackAlerter.Thread.Start");
+        var startActivity = _telemetry.Activities.StartRootActivity("SlackAlerter.Thread.Start");
         var config = _config.CurrentValue;
         try
         {
@@ -111,7 +114,7 @@ internal sealed class SlackAlerter(
             startActivity = null;
             do
             {
-                using var iterationActivity = _telemetry.StartRootActivity("SlackAlerter.Thread.Iteration");
+                using var iterationActivity = _telemetry.Activities.StartRootActivity("SlackAlerter.Thread.Iteration");
 
                 var workItems = await _repository.ListAlerterWorkItems(AlertData.Types.Slack, cancellationToken);
                 if (workItems.Length == 0)

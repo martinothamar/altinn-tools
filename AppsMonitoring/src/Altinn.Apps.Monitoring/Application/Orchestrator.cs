@@ -38,7 +38,10 @@ internal sealed class Orchestrator(
     private readonly IQueryLoader _queryLoader = queryLoader;
     private readonly TimeProvider _timeProvider = timeProvider;
     private readonly DistributedLocking _locking = locking;
+#pragma warning disable CA2213 // Disposable fields should be disposed
+    // DI container owns telemetry
     private readonly Telemetry _telemetry = telemetry;
+#pragma warning restore CA2213 // Disposable fields should be disposed
 
     private Task? _serviceOwnerDiscoveryThread;
     private ConcurrentDictionary<ServiceOwner, Task> _serviceOwnerThreads = new();
@@ -82,7 +85,7 @@ internal sealed class Orchestrator(
 
     private async Task ServiceOwnerDiscoveryThread(CancellationToken cancellationToken)
     {
-        var startActivity = _telemetry.StartRootActivity("Orchestrator.ServiceOwnerDiscoveryThread.Start");
+        var startActivity = _telemetry.Activities.StartRootActivity("Orchestrator.ServiceOwnerDiscoveryThread.Start");
 
         var options = _appConfiguration.CurrentValue;
         if (options.OrchestratorStartSignal is not null)
@@ -109,7 +112,9 @@ internal sealed class Orchestrator(
             startActivity = null;
             do
             {
-                using var activity = _telemetry.StartRootActivity("Orchestrator.ServiceOwnerDiscoveryThread.Iteration");
+                using var activity = _telemetry.Activities.StartRootActivity(
+                    "Orchestrator.ServiceOwnerDiscoveryThread.Iteration"
+                );
 
                 var serviceOwners = await _serviceOwnerDiscovery.Discover(cancellationToken);
 
@@ -148,7 +153,7 @@ internal sealed class Orchestrator(
 
     private async Task ServiceOwnerThread(ServiceOwner serviceOwner, CancellationToken cancellationToken)
     {
-        var startActivity = _telemetry.StartRootActivity("Orchestrator.ServiceOwnerThread.Start");
+        var startActivity = _telemetry.Activities.StartRootActivity("Orchestrator.ServiceOwnerThread.Start");
         startActivity?.SetTag("serviceowner", serviceOwner.Value);
 
         var options = _appConfiguration.CurrentValue;
@@ -166,7 +171,9 @@ internal sealed class Orchestrator(
             startActivity = null;
             do
             {
-                using var activity = _telemetry.StartRootActivity("Orchestrator.ServiceOwnerThread.Iteration");
+                using var activity = _telemetry.Activities.StartRootActivity(
+                    "Orchestrator.ServiceOwnerThread.Iteration"
+                );
                 activity?.SetTag("serviceowner", serviceOwner.Value);
 
                 IReadOnlyList<Query> queries;

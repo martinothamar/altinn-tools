@@ -11,19 +11,10 @@ using NodaTime.Serialization.SystemTextJson;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Host.ConfigureHostOptions(opts => opts.ShutdownTimeout = TimeSpan.FromSeconds(20));
+
 if (!builder.IsLocal())
 {
-    // File.WriteAllText(
-    //     "OTEL_DIAGNOSTICS.json",
-    //     """
-    //     {
-    //         "LogDirectory": "/telemetry-debug",
-    //         "FileSize": 32768,
-    //         "LogLevel": "Warning"
-    //     }
-    //     """
-    // );
-
     builder.Services.Configure<ForwardedHeadersOptions>(options =>
     {
         options.ForwardedHeaders = ForwardedHeaders.All;

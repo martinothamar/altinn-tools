@@ -1,12 +1,14 @@
 #!/bin/bash
 
 # Runs flux push
-# Needs to have logged into ACR:
+# Needs to be able to log into ACR:
 #   az acr login --name altinntjenesterregistry
 # ./flus-push.sh
 
 f() {
+    # Function is executed in subshell to avoid changing working directory
     cd deployment/
+
     flux push artifact oci://altinntjenesterregistry.azurecr.io/configs/apps-monitor:$(git rev-parse --short HEAD) \
         --provider=generic \
         --reproducible \
