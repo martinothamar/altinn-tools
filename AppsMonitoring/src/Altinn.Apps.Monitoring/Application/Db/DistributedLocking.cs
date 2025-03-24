@@ -51,15 +51,6 @@ internal sealed class DistributedLocking(
         var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
         try
         {
-            connection.StateChange += (_, e) =>
-            {
-                _logger.LogInformation(
-                    "Distributed lock ({LockName}) connection state changed: {FromState}->{ToState}",
-                    lockName,
-                    e.OriginalState,
-                    e.CurrentState
-                );
-            };
             if (connection.State != ConnectionState.Open)
                 await connection.OpenAsync(cancellationToken);
 
@@ -80,6 +71,10 @@ internal sealed class DistributedLocking(
             }
 
             var handle = new DistributedLockHandle(this, lockName, connection);
+            connection.StateChange += (_, e) =>
+            {
+                handle.StateChange(e.OriginalState, e.CurrentState);
+            };
             connection = null;
             activity?.SetTag("lock.acquired", true);
             _logger.LogInformation("Acquired lock {LockName}", lockName);
@@ -109,9 +104,28 @@ internal sealed class DistributedLocking(
         private readonly DistributedLocking _parent = parent;
         private readonly DistributedLockName _lockName = lockName;
         private readonly NpgsqlConnection _connection = connection;
+        private long _disposed = 0;
+
+        public void StateChange(ConnectionState fromState, ConnectionState toState)
+        {
+            if (Interlocked.Read(ref _disposed) == 0)
+            {
+                _parent._logger.LogWarning(
+                    "Distributed lock ({LockName}) connection state changed: {FromState}->{ToState}",
+                    _lockName,
+                    fromState,
+                    toState
+                );
+            }
+        }
 
         public async ValueTask DisposeAsync()
         {
+            if (Interlocked.CompareExchange(ref _disposed, 1, 0) != 0)
+                return;
+
+            using var activity = _parent._telemetry.Activities.StartActivity("DistributedLocking.ReleaseLock");
+            activity?.SetTag("lock.name", _lockName.ToString());
             try
             {
                 if (_connection.State != ConnectionState.Open)
@@ -134,6 +148,8 @@ internal sealed class DistributedLocking(
                     _parent._logger.LogWarning("Failed to release lock {LockName} (it was not held)", _lockName);
                     throw new Exception("Couldn't release lock");
                 }
+
+                _parent._logger.LogInformation("Released lock {LockName}", _lockName);
             }
             finally
             {
