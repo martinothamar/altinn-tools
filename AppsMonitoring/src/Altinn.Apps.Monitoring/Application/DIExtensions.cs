@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Altinn.Apps.Monitoring.Application.Azure;
 using Altinn.Apps.Monitoring.Application.Db;
 using Altinn.Apps.Monitoring.Application.DbUp;
@@ -21,6 +22,13 @@ internal static class DIExtensions
         builder.AddOtel();
 
         builder.Services.TryAddSingleton<TimeProvider>(TimeProvider.System);
+
+        if (!builder.IsLocal())
+        {
+            builder.Services.AddSingleton<IHostLifetime>(sp =>
+                ActivatorUtilities.CreateInstance<DelayedShutdownHostLifetime>(sp, TimeSpan.FromSeconds(5))
+            );
+        }
 
         // Hosted service registration
         // 1. Migrate db
@@ -220,4 +228,56 @@ internal static class DIExtensions
 
     public static bool IsLocal(this IHostApplicationBuilder builder) =>
         builder.Environment.IsDevelopment() || builder.IsTest();
+
+    internal sealed class DelayedShutdownHostLifetime(
+        ILogger<DelayedShutdownHostLifetime> logger,
+        IHostApplicationLifetime applicationLifetime,
+        TimeProvider timeProvider,
+        TimeSpan delay
+    ) : IHostLifetime, IDisposable
+    {
+        private readonly ILogger<DelayedShutdownHostLifetime> _logger = logger;
+        private readonly IHostApplicationLifetime _applicationLifetime = applicationLifetime;
+        private readonly TimeProvider _timeProvider = timeProvider;
+        private readonly TimeSpan _delay = delay;
+        private IEnumerable<IDisposable>? _disposables;
+
+        public Task StopAsync(CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task WaitForStartAsync(CancellationToken cancellationToken)
+        {
+            _logger.LogInformation("Starting, will delay OS shutdown request by {Delay} when requested", _delay);
+            _disposables =
+            [
+                PosixSignalRegistration.Create(PosixSignal.SIGINT, HandleSignal),
+                PosixSignalRegistration.Create(PosixSignal.SIGQUIT, HandleSignal),
+                PosixSignalRegistration.Create(PosixSignal.SIGTERM, HandleSignal),
+            ];
+            return Task.CompletedTask;
+        }
+
+        private void HandleSignal(PosixSignalContext ctx)
+        {
+            _logger.LogInformation(
+                "Received signal {Signal}, shutting down (after delay: {Delay})",
+                ctx.Signal,
+                _delay
+            );
+            ctx.Cancel = true;
+            Task.Delay(_delay, _timeProvider)
+                .ContinueWith(t => _applicationLifetime.StopApplication(), TaskScheduler.Default);
+        }
+
+        public void Dispose()
+        {
+            _logger.LogInformation("Disposing...");
+            foreach (var disposable in _disposables ?? Enumerable.Empty<IDisposable>())
+            {
+                disposable.Dispose();
+            }
+        }
+    }
 }
