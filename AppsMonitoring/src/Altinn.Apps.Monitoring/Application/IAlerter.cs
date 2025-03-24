@@ -10,7 +10,7 @@ internal sealed record AlerterEvent
     public required AlertEntity? AlertAfter { get; init; }
 }
 
-internal interface IAlerter : IHostedService
+internal interface IAlerter : IApplicationService
 {
     ChannelReader<AlerterEvent> Events { get; }
 }

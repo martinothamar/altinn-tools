@@ -15,7 +15,6 @@ internal sealed class SlackAlerter(
     IOptionsMonitor<AppConfiguration> config,
     IHostApplicationLifetime lifetime,
     TimeProvider timeProvider,
-    DistributedLocking locking,
     Repository repository,
     Telemetry telemetry
 ) : IAlerter, IDisposable
@@ -43,7 +42,6 @@ internal sealed class SlackAlerter(
     private readonly IOptionsMonitor<AppConfiguration> _config = config;
     private readonly IHostApplicationLifetime _lifetime = lifetime;
     private readonly TimeProvider _timeProvider = timeProvider;
-    private readonly DistributedLocking _locking = locking;
     private readonly Repository _repository = repository;
 #pragma warning disable CA2213 // Disposable fields should be disposed
     // DI container owns telemetry
@@ -57,7 +55,7 @@ internal sealed class SlackAlerter(
     private CancellationTokenSource? _cancellationTokenSource;
     private Task? _thread;
 
-    public Task StartAsync(CancellationToken cancellationToken)
+    public Task Start(CancellationToken cancellationToken)
     {
         using var activity = _telemetry.Activities.StartActivity("SlackAlerter.Start");
         _events = Channel.CreateBounded<AlerterEvent>(
@@ -95,19 +93,6 @@ internal sealed class SlackAlerter(
         var config = _config.CurrentValue;
         try
         {
-            await using var handle = await _locking.AcquireLock(DistributedLockName.Alerter, cancellationToken);
-            if (handle.HandleLostToken.CanBeCanceled)
-            {
-                _logger.LogInformation("Will monitor for lost alerter lock");
-                handle.HandleLostToken.Register(() =>
-                {
-                    if (cancellationToken.IsCancellationRequested)
-                        return; // We are already shutting down
-                    _logger.LogError("Alerter lock lost, stopping application");
-                    _lifetime.StopApplication();
-                });
-            }
-
             using var timer = new PeriodicTimer(config.PollInterval / 2, _timeProvider);
 
             startActivity?.Dispose();
@@ -327,7 +312,7 @@ internal sealed class SlackAlerter(
         }
     }
 
-    public async Task StopAsync(CancellationToken cancellationToken)
+    public async Task Stop()
     {
         if (_thread is not null)
             await _thread;

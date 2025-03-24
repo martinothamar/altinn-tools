@@ -14,6 +14,100 @@ using OpenTelemetry.Trace;
 
 namespace Altinn.Apps.Monitoring.Application;
 
+internal sealed class LeaderService(
+    ILogger<LeaderService> logger,
+    TimeProvider timeProvider,
+    IHostApplicationLifetime lifetime,
+    DistributedLocking locking,
+    IServiceProvider serviceProvider
+) : BackgroundService
+{
+    private readonly ILogger<LeaderService> _logger = logger;
+    private readonly TimeProvider _timeProvider = timeProvider;
+    private readonly IHostApplicationLifetime _lifetime = lifetime;
+    private readonly DistributedLocking _locking = locking;
+    private readonly IServiceProvider _serviceProvider = serviceProvider;
+
+    private readonly CancellationTokenSource _cts = new();
+    private readonly TaskCompletionSource _tcs = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously
+    );
+
+    public void SignalStop()
+    {
+        _cts.Cancel();
+        _tcs.TrySetResult();
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        _logger.LogInformation("Leader service started");
+
+        try
+        {
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                _logger.LogInformation("Attempting to become leader");
+                await using var handle = await _locking.TryAcquireLock(DistributedLockName.Application, stoppingToken);
+                if (handle is null)
+                {
+                    _logger.LogInformation("Failed to become leader, waiting...");
+                    await Task.Delay(TimeSpan.FromSeconds(30), _timeProvider, stoppingToken);
+                    continue;
+                }
+
+                _logger.LogInformation("Became leader");
+
+                var services = _serviceProvider.GetServices<IApplicationService>().ToArray();
+                foreach (var service in services)
+                {
+                    _logger.LogInformation("Starting service {Service}", service.GetType().Name);
+                    await service.Start(_cts.Token);
+                }
+
+                await _tcs.Task;
+
+                foreach (var service in services.Reverse())
+                {
+                    _logger.LogInformation("Stopping service {Service}", service.GetType().Name);
+                    try
+                    {
+                        await service.Stop();
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        _logger.LogError(ex, "Failed to stop service {Service}", service.GetType().Name);
+                    }
+                }
+
+                break;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogInformation("Leader service was cancelled");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Leader service failed");
+            _lifetime.StopApplication();
+        }
+    }
+
+    public override void Dispose()
+    {
+        _cts.Dispose();
+        base.Dispose();
+    }
+}
+
+internal interface IApplicationService
+{
+    Task Start(CancellationToken cancellationToken);
+
+    Task Stop();
+}
+
 internal static class DIExtensions
 {
     public static IHostApplicationBuilder AddApplication(this IHostApplicationBuilder builder)
@@ -36,12 +130,15 @@ internal static class DIExtensions
         // 2. Seed db
         builder.Services.TryAddSingleton<Seeder>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<Seeder>());
+        // 3. Leader service
+        builder.Services.AddSingleton<LeaderService>();
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<LeaderService>());
         // 3. Run the orchestrator (main loop)
         builder.Services.TryAddSingleton<Orchestrator>();
-        builder.Services.AddHostedService(sp => sp.GetRequiredService<Orchestrator>());
+        builder.Services.AddSingleton<IApplicationService>(sp => sp.GetRequiredService<Orchestrator>());
         // 4. Slack alerting
         builder.Services.TryAddSingleton<IAlerter, SlackAlerter>();
-        builder.Services.AddHostedService(sp => sp.GetRequiredService<IAlerter>());
+        builder.Services.AddSingleton<IApplicationService>(sp => sp.GetRequiredService<IAlerter>());
 
         builder.AddDb();
 
@@ -244,12 +341,17 @@ internal static class DIExtensions
         ILogger<DelayedShutdownHostLifetime> logger,
         IHostApplicationLifetime applicationLifetime,
         TimeProvider timeProvider,
+        LeaderService leaderService,
         TimeSpan delay
     ) : IHostLifetime, IDisposable
     {
         private readonly ILogger<DelayedShutdownHostLifetime> _logger = logger;
         private readonly IHostApplicationLifetime _applicationLifetime = applicationLifetime;
         private readonly TimeProvider _timeProvider = timeProvider;
+#pragma warning disable CA2213 // Disposable fields should be disposed
+        // Owned by DI container
+        private readonly LeaderService _leaderService = leaderService;
+#pragma warning restore CA2213 // Disposable fields should be disposed
         private readonly TimeSpan _delay = delay;
         private IEnumerable<IDisposable>? _disposables;
 
@@ -267,6 +369,7 @@ internal static class DIExtensions
                 PosixSignalRegistration.Create(PosixSignal.SIGQUIT, HandleSignal),
                 PosixSignalRegistration.Create(PosixSignal.SIGTERM, HandleSignal),
             ];
+            _applicationLifetime.ApplicationStopping.Register(() => _leaderService.SignalStop());
             return Task.CompletedTask;
         }
 
@@ -278,6 +381,9 @@ internal static class DIExtensions
                 _delay
             );
             ctx.Cancel = true;
+            // This will effectively stop the background processing/leadership lease a
+            // little earlier (before the whole application stops)
+            _leaderService.SignalStop();
             Task.Delay(_delay, _timeProvider)
                 .ContinueWith(t => _applicationLifetime.StopApplication(), TaskScheduler.Default);
         }

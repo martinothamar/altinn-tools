@@ -25,9 +25,8 @@ internal sealed class Orchestrator(
     Repository repository,
     IQueryLoader queryLoader,
     TimeProvider timeProvider,
-    DistributedLocking locking,
     Telemetry telemetry
-) : IHostedService, IDisposable
+) : IApplicationService, IDisposable
 {
     private readonly ILogger<Orchestrator> _logger = logger;
     private readonly IOptionsMonitor<AppConfiguration> _appConfiguration = appConfiguration;
@@ -37,7 +36,6 @@ internal sealed class Orchestrator(
     private readonly Repository _repository = repository;
     private readonly IQueryLoader _queryLoader = queryLoader;
     private readonly TimeProvider _timeProvider = timeProvider;
-    private readonly DistributedLocking _locking = locking;
 #pragma warning disable CA2213 // Disposable fields should be disposed
     // DI container owns telemetry
     private readonly Telemetry _telemetry = telemetry;
@@ -52,7 +50,7 @@ internal sealed class Orchestrator(
 
     private CancellationTokenSource? _cancellationTokenSource;
 
-    public Task StartAsync(CancellationToken cancellationToken)
+    public Task Start(CancellationToken cancellationToken)
     {
         using var activity = _telemetry.Activities.StartActivity("Orchestrator.Start");
 
@@ -93,19 +91,6 @@ internal sealed class Orchestrator(
 
         try
         {
-            await using var handle = await _locking.AcquireLock(DistributedLockName.Orchestrator, cancellationToken);
-            if (handle.HandleLostToken.CanBeCanceled)
-            {
-                _logger.LogInformation("Will monitor for lost orchestrator lock");
-                handle.HandleLostToken.Register(() =>
-                {
-                    if (cancellationToken.IsCancellationRequested)
-                        return; // We are already shutting down
-                    _logger.LogError("Orchestrator lock lost, stopping application");
-                    _lifetime.StopApplication();
-                });
-            }
-
             using var timer = new PeriodicTimer(options.PollInterval, _timeProvider);
 
             startActivity?.Dispose();
@@ -308,7 +293,7 @@ internal sealed class Orchestrator(
         }
     }
 
-    public async Task StopAsync(CancellationToken cancellationToken)
+    public async Task Stop()
     {
         if (_serviceOwnerDiscoveryThread is not null)
             await _serviceOwnerDiscoveryThread;
