@@ -57,6 +57,7 @@ internal sealed class DistributedLocking(
             await using var cmd = connection.CreateCommand();
             cmd.CommandText = "SELECT pg_try_advisory_lock(@lockName);";
             cmd.Parameters.AddWithValue("lockName", (long)lockName);
+            await cmd.PrepareAsync(cancellationToken);
             var hasLockObj = await cmd.ExecuteScalarAsync(cancellationToken);
             if (hasLockObj is not bool hasLock)
             {
@@ -71,11 +72,8 @@ internal sealed class DistributedLocking(
             }
 
             var handle = new DistributedLockHandle(this, lockName, connection);
-            connection.StateChange += (_, e) =>
-            {
-                handle.StateChange(e.OriginalState, e.CurrentState);
-            };
             connection = null;
+            handle.Monitor();
             activity?.SetTag("lock.acquired", true);
             _logger.LogInformation("Acquired lock {LockName}", lockName);
             return handle;
@@ -104,11 +102,71 @@ internal sealed class DistributedLocking(
         private readonly DistributedLocking _parent = parent;
         private readonly DistributedLockName _lockName = lockName;
         private readonly NpgsqlConnection _connection = connection;
-        private long _disposed = 0;
+        private readonly CancellationTokenSource _cts = new();
+        private SemaphoreSlim? _lock = new(1, 1);
+
+        public void Monitor()
+        {
+            _connection.StateChange += (_, e) =>
+            {
+                StateChange(e.OriginalState, e.CurrentState);
+            };
+            _ = Task.Run(async () =>
+            {
+                var cancellationToken = _cts.Token;
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    try
+                    {
+                        var lck = _lock;
+                        if (lck is null)
+                            break;
+
+                        await lck.WaitAsync(cancellationToken);
+                        try
+                        {
+                            await using var command = _connection.CreateCommand();
+                            command.CommandText = """
+                                SELECT COUNT(*)
+                                FROM pg_locks
+                                WHERE locktype = 'advisory'
+                                    AND ((classid::bigint << 32) | objid::bigint) = @lockName
+                                    AND pid = pg_backend_pid();
+                            """;
+                            command.Parameters.AddWithValue("lockName", (long)_lockName);
+                            await command.PrepareAsync(cancellationToken);
+                            var lockCountObj = await command.ExecuteScalarAsync(cancellationToken);
+                            if (lockCountObj is not int lockCount)
+                            {
+                                _parent._logger.LogError("Unexpected result from monitoring lock");
+                                throw new Exception("Couldn't monitor lock");
+                            }
+
+                            if (!cancellationToken.IsCancellationRequested && lockCount != 1)
+                            {
+                                _parent._logger.LogWarning("Lock was lost: {LockName}", _lockName);
+                            }
+                        }
+                        finally
+                        {
+                            lck.Release();
+                        }
+
+                        await Task.Delay(TimeSpan.FromSeconds(30), _parent._timeProvider, cancellationToken);
+                    }
+                    catch (OperationCanceledException) { }
+                    catch (ObjectDisposedException) when (_lock is null) { }
+                    catch (Exception ex)
+                    {
+                        _parent._logger.LogError(ex, "Failed to monitor lock {LockName}", _lockName);
+                    }
+                }
+            });
+        }
 
         public void StateChange(ConnectionState fromState, ConnectionState toState)
         {
-            if (Interlocked.Read(ref _disposed) == 0)
+            if (!_cts.Token.IsCancellationRequested)
             {
                 _parent._logger.LogWarning(
                     "Distributed lock ({LockName}) connection state changed: {FromState}->{ToState}",
@@ -121,13 +179,20 @@ internal sealed class DistributedLocking(
 
         public async ValueTask DisposeAsync()
         {
-            if (Interlocked.CompareExchange(ref _disposed, 1, 0) != 0)
+            if (_cts.IsCancellationRequested)
                 return;
 
             using var activity = _parent._telemetry.Activities.StartActivity("DistributedLocking.ReleaseLock");
             activity?.SetTag("lock.name", _lockName.ToString());
+
+            if (_lock is null)
+                throw new Exception("Lock is already disposed (this should not happen)");
+
+            await _lock.WaitAsync();
             try
             {
+                await _cts.CancelAsync();
+
                 if (_connection.State != ConnectionState.Open)
                 {
                     _parent._logger.LogWarning("Connection is not open when disposing lock handle");
@@ -137,6 +202,7 @@ internal sealed class DistributedLocking(
                 await using var cmd = _connection.CreateCommand();
                 cmd.CommandText = "SELECT pg_advisory_unlock(@lockName);";
                 cmd.Parameters.AddWithValue("lockName", (long)_lockName);
+                await cmd.PrepareAsync();
                 var wasReleasedObj = await cmd.ExecuteScalarAsync();
                 if (wasReleasedObj is not bool wasReleased)
                 {
@@ -153,7 +219,19 @@ internal sealed class DistributedLocking(
             }
             finally
             {
-                await _connection.DisposeAsync();
+                try
+                {
+                    await _connection.DisposeAsync();
+                }
+                catch (Exception ex)
+                {
+                    _parent._logger.LogError(ex, "Failed to dispose connection when releasing lock");
+                }
+                _lock.Release();
+                _cts.Dispose();
+                var lck = _lock;
+                _lock = null;
+                lck.Dispose();
             }
         }
     }
