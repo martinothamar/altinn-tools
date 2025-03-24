@@ -28,7 +28,7 @@ internal sealed class DistributedLocking(
         using var activity = _telemetry.Activities.StartActivity("DistributedLocking.AcquireLock");
         activity?.SetTag("lock.name", lockName.ToString());
 
-        var connString = $"{_connectionString.Value};Tcp Keepalive=true";
+        var connString = _connectionString.Value;
 
         var @lock = new PostgresDistributedLock(
             new PostgresAdvisoryLockKey((long)lockName),

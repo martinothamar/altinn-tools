@@ -202,7 +202,10 @@ internal static class DIExtensions
             connStringBuilder.Port = db.Port;
             connStringBuilder.IncludeErrorDetail = true;
             if (!builder.IsLocal())
+            {
                 connStringBuilder.SslMode = SslMode.Require;
+                connStringBuilder.KeepAlive = 30;
+            }
 
             return new ConnectionString(connStringBuilder.ToString());
         }
