@@ -26,6 +26,7 @@ spec:
       annotations:
         linkerd.io/inject: enabled
     spec:
+      # SA is generated in terraform due to the Workload Identity client ID being generated in Terraform
       serviceAccountName: apps-monitor-sa
       # .NET docker images run with '1654', can verify with
       # docker image inspect mcr.microsoft.com/dotnet/aspnet:9.0-noble-chiseled-extra
