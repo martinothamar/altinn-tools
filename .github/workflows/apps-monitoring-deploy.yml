@@ -20,7 +20,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: set image tag
+      - name: flux install
+        uses: fluxcd/flux2/action@3b42b200d376430f0e24d35f1a600447d92da531 # No tag
+        with:
+          version: '2.5.1'
+
+      - name: set vars
         id: vars
         run: |
           echo "registry=altinntjenesterregistry.azurecr.io" >> $GITHUB_OUTPUT
