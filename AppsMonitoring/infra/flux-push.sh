@@ -2,20 +2,20 @@
 
 # Runs flux push
 # Needs to be able to log into ACR:
-#   az acr login --name altinntjenesterregistry
+#   az acr login --name altinncr
 # ./flus-push.sh
 
 f() {
     # Function is executed in subshell to avoid changing working directory
     cd deployment/
 
-    flux push artifact oci://altinntjenesterregistry.azurecr.io/configs/apps-monitor:$(git rev-parse --short HEAD) \
+    flux push artifact oci://altinncr.azurecr.io/apps-monitor/config:$(git rev-parse --short HEAD) \
         --provider=generic \
         --reproducible \
         --path="." \
         --source="$(git config --get remote.origin.url)" \
         --revision="$(git branch --show-current)/$(git rev-parse HEAD)"
-    flux tag artifact oci://altinntjenesterregistry.azurecr.io/configs/apps-monitor:$(git rev-parse --short HEAD) \
+    flux tag artifact oci://altinncr.azurecr.io/apps-monitor/config:$(git rev-parse --short HEAD) \
         --provider=generic \
         --tag at24
 

@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: apps-monitor
   annotations:
-    altinn.no/image: altinntjenesterregistry.azurecr.io/altinn-apps-monitor:latest
+    altinn.no/image: altinncr.azurecr.io/apps-monitor/image:latest
     altinn.no/image-tag: latest
 spec:
   minReadySeconds: 3

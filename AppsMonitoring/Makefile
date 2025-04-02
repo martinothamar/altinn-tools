@@ -7,22 +7,22 @@ test:
 	dotnet test --logger "console;verbosity=detailed"
 
 build-image:
-	docker build -t altinntjenesterregistry.azurecr.io/altinn-apps-monitor:latest -f src/Altinn.Apps.Monitoring/Dockerfile .
+	docker build -t altinncr.azurecr.io/apps-monitor/image:latest -f src/Altinn.Apps.Monitoring/Dockerfile .
 
 run-image: build-image
-	docker run --rm altinntjenesterregistry.azurecr.io/altinn-apps-monitor:latest
+	docker run --rm altinncr.azurecr.io/apps-monitor/image:latest
 
 scan-image:
-	trivy image altinntjenesterregistry.azurecr.io/altinn-apps-monitor:latest
+	trivy image altinncr.azurecr.io/apps-monitor/image:latest
 
 dive-image:
-	dive altinntjenesterregistry.azurecr.io/altinn-apps-monitor:latest
+	dive altinncr.azurecr.io/apps-monitor/image:latest
 
 acr-login:
-	az acr login --name altinntjenesterregistry
+	az acr login --name altinncr
 
 push-image: build-image
-	docker push altinntjenesterregistry.azurecr.io/altinn-apps-monitor:latest
+	docker push altinncr.azurecr.io/apps-monitor/image:latest
 
 build-manifests:
 	kubectl kustomize infra/deployment/at24 > infra/deployment/at24/result.yaml

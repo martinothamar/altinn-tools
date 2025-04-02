@@ -11,6 +11,9 @@ jobs:
   deploy:
 
     runs-on: ubuntu-latest
+    environment: prod
+    permissions:
+      id-token: write # Require write permission to Fetch an OIDC token.
     defaults:
       run:
         working-directory: ./AppsMonitoring
@@ -28,11 +31,22 @@ jobs:
       - name: set vars
         id: vars
         run: |
-          echo "registry=altinntjenesterregistry.azurecr.io" >> $GITHUB_OUTPUT
-          echo "image=altinntjenesterregistry.azurecr.io/altinn-apps-monitor:$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "registry=altinncr.azurecr.io" >> $GITHUB_OUTPUT
+          echo "image=altinncr.azurecr.io/apps-monitor/image:$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
           echo "image_tag=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
-      # TODO: az login
+      - name: az login
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2.3.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.ALTINNCR_SUBSCRIPTION_ID }}
+
+      - name: az acr login
+        uses: azure/cli@089eac9d8cc39f5d003e94f8b65efc51076c9cbd # v2.1.0
+        with:
+          inlineScript: |
+            az acr login --name altinncr
 
       - name: docker build
         run: docker build -t ${{ steps.vars.outputs.image }} -f src/Altinn.Apps.Monitoring/Dockerfile .
@@ -62,12 +76,12 @@ jobs:
 
       - name: push deployment
         run: |
-          flux push artifact oci://${{ steps.vars.outputs.registry }}/configs/apps-monitor:${{ steps.vars.outputs.image_tag }} \
+          flux push artifact oci://${{ steps.vars.outputs.registry }}/apps-monitor/config:${{ steps.vars.outputs.image_tag }} \
               --provider=generic \
               --reproducible \
               --path="." \
               --source="$(git config --get remote.origin.url)" \
               --revision="$(git branch --show-current)/${{ steps.vars.outputs.image_tag }}"
-          flux tag artifact oci://${{ steps.vars.outputs.registry }}/configs/apps-monitor:${{ steps.vars.outputs.image_tag }} \
+          flux tag artifact oci://${{ steps.vars.outputs.registry }}/apps-monitor/config:${{ steps.vars.outputs.image_tag }} \
               --provider=generic \
               --tag at24
