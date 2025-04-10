@@ -24,6 +24,7 @@ internal sealed class Seeder(
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         using var activity = _telemetry.Activities.StartActivity("Seeder.Run");
+        var dbFilePath = Path.Combine(Path.GetTempPath(), "seed.db");
         try
         {
             await using var handle = await _locking.AcquireLock(DistributedLockName.DbSeeder, cancellationToken);
@@ -41,17 +42,16 @@ internal sealed class Seeder(
                 return;
             }
 
-            if (string.IsNullOrWhiteSpace(_config.SeedSqliteDbPath))
-                throw new InvalidOperationException("SeedSqliteDbPath configuration is required for seeding");
+            var seedData = await _repository.GetSqliteSeed(cancellationToken);
+            if (seedData == null)
+            {
+                _logger.LogInformation("No seed data found");
+                return;
+            }
 
-            var dbFileInfo = new FileInfo(_config.SeedSqliteDbPath);
-            if (!dbFileInfo.Exists)
-                throw new FileNotFoundException("SQLite db does not exist", dbFileInfo.FullName);
+            await File.WriteAllBytesAsync(dbFilePath, seedData, cancellationToken);
 
-            var sourceDb = new SQLiteAsyncConnection(
-                dbFileInfo.FullName,
-                SQLiteOpenFlags.ReadOnly | SQLiteOpenFlags.NoMutex
-            );
+            var sourceDb = new SQLiteAsyncConnection(dbFilePath, SQLiteOpenFlags.ReadOnly | SQLiteOpenFlags.NoMutex);
             try
             {
                 var records = await sourceDb.Table<ErrorRecord>().ToArrayAsync();
@@ -146,6 +146,15 @@ internal sealed class Seeder(
         }
         finally
         {
+            try
+            {
+                if (File.Exists(dbFilePath))
+                    File.Delete(dbFilePath);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed deleting seed database file");
+            }
             _completion.TrySetResult();
         }
     }

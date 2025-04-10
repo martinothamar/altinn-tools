@@ -54,6 +54,8 @@ spec:
           env:
             - name: ASPNETCORE_URLS
               value: http://*:5156
+            - name: TMPDIR
+              value: /tmp
             - name: AppConfiguration__KeyVaultUri
               valueFrom:
                 secretKeyRef:
@@ -117,7 +119,12 @@ spec:
           volumeMounts:
             - name: telemetry
               mountPath: /telemetry
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: telemetry
           emptyDir:
             sizeLimit: 128Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi

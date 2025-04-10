@@ -26,12 +26,28 @@ internal sealed class Repository(
         internal const string Queries = $"{Schema}.queries";
         internal const string Alerts = $"{Schema}.alerts";
 
+        // Not owned by this app, just read. Contains the SQLite db seed
+        internal const string Seed = "seed";
+
         internal static readonly string[] All = { Telemetry, Queries, Alerts };
     }
 
     private readonly ILogger<Repository> _logger = logger;
     private readonly NpgsqlDataSource _userDataSource = userDataSource;
     private readonly NpgsqlDataSource _adminDataSource = adminDataSource;
+
+    public async ValueTask<byte[]> GetSqliteSeed(CancellationToken cancellationToken)
+    {
+        await using var connection = await _adminDataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT data FROM {Tables.Seed} ORDER BY id DESC LIMIT 1";
+
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        if (result is not byte[] seed)
+            throw new InvalidOperationException("Unexpected result from seed query: " + result?.GetType());
+
+        return seed;
+    }
 
     public async ValueTask<IReadOnlyList<QueryStateEntity>> ListQueryStates(
         ServiceOwner? serviceOwner = null,

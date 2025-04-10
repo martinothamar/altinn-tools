@@ -13,7 +13,6 @@ internal sealed class AppConfiguration
 
     public DbConfiguration Db { get; set; } = null!;
     public DbConfiguration DbAdmin { get; set; } = null!;
-    public string SeedSqliteDbPath { get; set; } = Path.Combine("data", "data.db");
 
     public string KeyVaultUri { get; set; } = null!;
 

@@ -192,7 +192,6 @@ internal sealed record AppFixture(string Case, OrchestratorFixture OrchestratorF
                         fixture.MockServer.Url ?? throw new InvalidOperationException("Mock server URL is null");
 
                     config.DisableSeeder = false;
-                    config.SeedSqliteDbPath = Path.Combine("data", "mini.db");
                 });
 
                 services.Configure<FakeConfig>(config =>

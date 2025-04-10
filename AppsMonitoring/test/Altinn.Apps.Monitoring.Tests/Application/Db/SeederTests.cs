@@ -15,7 +15,6 @@ public class SeederTests
                 services.Configure<AppConfiguration>(config =>
                 {
                     config.DisableSeeder = false;
-                    config.SeedSqliteDbPath = Path.Combine("data", "mini.db");
                 });
             }
         );

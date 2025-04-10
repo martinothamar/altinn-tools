@@ -111,7 +111,6 @@ public class OrchestratorTests
                     services.Configure<AppConfiguration>(config =>
                     {
                         config.DisableSeeder = false;
-                        config.SeedSqliteDbPath = Path.Combine("data", "mini.db");
                     });
                 }
 
