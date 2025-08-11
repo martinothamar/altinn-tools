@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Web;
 using LibGit2Sharp;
+using Spectre.Console;
 
 namespace Altinn.Analysis;
 
@@ -62,12 +63,14 @@ internal sealed record GiteaArchiveStatus([property: JsonPropertyName("complete"
 [JsonSerializable(typeof(GiteaArchiveStatus))]
 internal sealed partial class GiteaClientJsonContext : JsonSerializerContext { }
 
-public sealed class GiteaClient
+public sealed class GiteaClient : IDisposable
 {
     private const int PageSize = 50;
     private const string PageSizeStr = "50";
 
     private readonly HttpClient _httpClient;
+    private readonly SyncThreadPool _threadPool;
+
     private readonly FetchConfig _config;
 
     public GiteaClient(FetchConfig config)
@@ -83,6 +86,7 @@ public sealed class GiteaClient
         httpClient.DefaultRequestHeaders.Add("Accept", "application/json");
         httpClient.DefaultRequestHeaders.Add("Authorization", $"token {config.Password}");
         _httpClient = httpClient;
+        _threadPool = new SyncThreadPool(config.MaxParallelism);
     }
 
     public async IAsyncEnumerable<GiteaOrg> GetOrgs(
@@ -185,28 +189,93 @@ public sealed class GiteaClient
         }
     }
 
-    public Task CloneRepo(
+    public Task<string> CloneRepo(
         GiteaRepo repo,
-        string path,
+        DirectoryInfo path,
         string? branch = null,
         CancellationToken cancellationToken = default
     )
     {
-        return Task.Run(
-            () =>
+        return _threadPool.RunAsync(
+            (CancellationToken cancellationToken) =>
             {
-                var options = new CloneOptions();
-                options.FetchOptions.CredentialsProvider = (_url, _user, _cred) =>
-                    new UsernamePasswordCredentials
-                    {
-                        Username = _config.Username,
-                        Password = _config.Password,
-                    };
-                if (!string.IsNullOrWhiteSpace(branch))
-                    options.BranchName = branch;
-
                 cancellationToken.ThrowIfCancellationRequested();
-                Repository.Clone(repo.CloneUrl, path, options);
+                try
+                {
+                    var options = new CloneOptions();
+                    options.FetchOptions.CredentialsProvider = (_url, _user, _cred) =>
+                        new UsernamePasswordCredentials
+                        {
+                            Username = _config.Username,
+                            Password = _config.Password,
+                        };
+                    options.FetchOptions.Depth = 1;
+                    if (!string.IsNullOrWhiteSpace(branch))
+                        options.BranchName = branch;
+
+                    return Repository.Clone(repo.CloneUrl, path.FullName, options);
+                }
+                catch (Exception ex)
+                {
+                    AnsiConsole.MarkupLine(
+                        $"Error cloning repo '{repo.CloneUrl}' with branch '{branch}' to '{path.FullName}': {ex.Message}"
+                    );
+                    return "";
+                }
+            },
+            cancellationToken
+        );
+    }
+
+    public async Task UpdateRepo(
+        GiteaRepo repo,
+        DirectoryInfo path,
+        CancellationToken cancellationToken = default
+    )
+    {
+        await _threadPool.RunAsync(
+            (CancellationToken cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                try
+                {
+                    using var repository = new Repository(path.FullName);
+
+                    // Fetch the latest with depth 1
+                    var fetchOptions = new FetchOptions
+                    {
+                        Depth = 1,
+                        CredentialsProvider = (_url, _user, _cred) =>
+                            new UsernamePasswordCredentials
+                            {
+                                Username = _config.Username,
+                                Password = _config.Password,
+                            },
+                    };
+
+                    Commands.Fetch(
+                        repository,
+                        "origin",
+                        repository
+                            .Network.Remotes["origin"]
+                            .FetchRefSpecs.Select(x => x.Specification),
+                        fetchOptions,
+                        "Fetching latest"
+                    );
+
+                    // Hard reset to the remote branch
+                    var remoteBranch = repository.Branches[
+                        $"origin/{repository.Head.FriendlyName}"
+                    ];
+                    repository.Reset(ResetMode.Hard, remoteBranch.Tip);
+
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    AnsiConsole.MarkupLine($"Error updating repo '{repo.FullName}': {ex.Message}");
+                    return false;
+                }
             },
             cancellationToken
         );
@@ -274,5 +343,10 @@ public sealed class GiteaClient
             );
             await entryStream.CopyToAsync(entryFileStream, cancellationToken);
         }
+    }
+
+    public void Dispose()
+    {
+        _threadPool.Dispose();
     }
 }

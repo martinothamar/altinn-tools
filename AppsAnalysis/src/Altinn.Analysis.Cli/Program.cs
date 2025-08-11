@@ -1,6 +1,8 @@
-﻿using System.Globalization;
+﻿using System.Diagnostics;
+using System.Globalization;
 using Altinn.Analysis;
 using ConsoleAppFramework;
+using Spectre.Console;
 
 var app = ConsoleApp.Create();
 app.Add<Commands>();
@@ -30,8 +32,9 @@ public class Commands
         CancellationToken cancellationToken = default
     )
     {
+        var timer = Stopwatch.StartNew();
         var config = await TryReadConfigFile(configFile, cancellationToken);
-        var analyzer = new AppsFetcher(
+        using var analyzer = new AppsFetcher(
             new(
                 directory ?? config.Directory ?? "repos/",
                 username ?? config.Username ?? throw new Exception("Need username config to fetch"),
@@ -42,6 +45,15 @@ public class Commands
             )
         );
         await analyzer.Fetch(cancellationToken);
+        timer.Stop();
+        var elapsed = timer.Elapsed switch
+        {
+            var v when v >= TimeSpan.FromHours(1) => $"{v.TotalHours:0.00}h",
+            var v when v >= TimeSpan.FromMinutes(1) => $"{v.TotalMinutes:0.00}m",
+            var v => $"{v.TotalSeconds:0.00}s",
+        };
+        AnsiConsole.MarkupLine("");
+        AnsiConsole.MarkupLine($"[green]Fetch completed in {elapsed}[/]");
     }
 
     /// <summary>Analyze Altinn apps in a directory</summary>
@@ -56,6 +68,7 @@ public class Commands
         CancellationToken cancellationToken = default
     )
     {
+        var timer = Stopwatch.StartNew();
         var config = await TryReadConfigFile(configFile, cancellationToken);
         var analyzer = new AppsAnalyzer(
             new(
@@ -64,6 +77,15 @@ public class Commands
             )
         );
         await analyzer.Analyze(cancellationToken);
+        timer.Stop();
+        var elapsed = timer.Elapsed switch
+        {
+            var v when v >= TimeSpan.FromHours(1) => $"{v.TotalHours:0.00}h",
+            var v when v >= TimeSpan.FromMinutes(1) => $"{v.TotalMinutes:0.00}m",
+            var v => $"{v.TotalSeconds:0.00}s",
+        };
+        AnsiConsole.MarkupLine("");
+        AnsiConsole.MarkupLine($"[green]Analysis completed in {elapsed}[/]");
     }
 
     private static async Task<ConfigFile> TryReadConfigFile(
