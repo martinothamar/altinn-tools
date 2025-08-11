@@ -15,7 +15,7 @@ public sealed record FetchConfig(
     string AltinnUrl
 );
 
-public sealed class AppsFetcher
+public sealed class AppsFetcher : IDisposable
 {
     private readonly FetchConfig _config;
     private readonly GiteaClient _giteaClient;
@@ -94,7 +94,7 @@ public sealed class AppsFetcher
 
         if (_config.ClearDirectory && _directory.Exists)
         {
-            AnsiConsole.MarkupLine("Clearing directory...");
+            AnsiConsole.MarkupLine($"Clearing directory '{_directory.FullName}'...");
             _directory.Delete(recursive: true);
         }
 
@@ -308,13 +308,29 @@ public sealed class AppsFetcher
                             var branchDirectory = repoDirectory.CreateSubdirectory(
                                 Constants.MainBranchFolder
                             );
-                            await _giteaClient.DownloadRepoArchive(
-                                org,
-                                repo,
-                                branchDirectory,
-                                branch,
-                                cancellationToken: cancellationToken
-                            );
+
+                            if (
+                                branchDirectory.Exists
+                                && new DirectoryInfo(
+                                    Path.Join(branchDirectory.FullName, ".git")
+                                ).Exists
+                            )
+                            {
+                                await _giteaClient.UpdateRepo(
+                                    repo,
+                                    branchDirectory,
+                                    cancellationToken
+                                );
+                            }
+                            else
+                            {
+                                await _giteaClient.CloneRepo(
+                                    repo,
+                                    branchDirectory,
+                                    branch,
+                                    cancellationToken: cancellationToken
+                                );
+                            }
 
                             results.Add(new(org, repo, branch, branchDirectory));
 
@@ -361,6 +377,11 @@ public sealed class AppsFetcher
         await Task.WhenAll(processors);
 
         return new DownloadAppsResult(results.ToArray());
+    }
+
+    public void Dispose()
+    {
+        _giteaClient.Dispose();
     }
 
     private sealed record GetAppsResult(
