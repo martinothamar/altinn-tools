@@ -2,7 +2,6 @@
 using RepoCleanup.Application.Commands;
 using RepoCleanup.Infrastructure.Clients.Gitea;
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace RepoCleanup.Functions
@@ -11,7 +10,7 @@ namespace RepoCleanup.Functions
     {
         public static async Task Run()
         {
-            SharedFunctionSnippets.WriteHeader("Setup a new service owner in Gitea with all teams and default repository.");
+            SharedFunctionSnippets.WriteHeader("Setup a new service owner in Gitea with all teams and default repositories.");
 
             var giteaService = new GiteaService();
 
@@ -24,7 +23,7 @@ namespace RepoCleanup.Functions
             {
                 Console.WriteLine($"Could not create org {org.Fullname}");
                 return;
-            } 
+            }
             else
             {
                 Console.WriteLine($"Created org {org.Fullname}");
@@ -42,21 +41,31 @@ namespace RepoCleanup.Functions
             {
                 Console.WriteLine($"Created all default teams for {org.Fullname}");
             }
-            
-            // Create default datamodels repository
+
+            // Create default repositories
+            var isDatamodelRepoCreated = await CreateRepoWithPrefix(giteaService, org, "datamodels");
+            var isContentRepoCreated = await CreateRepoWithPrefix(giteaService, org, "content");
+
+            if (isDatamodelRepoCreated && isContentRepoCreated)
+            {
+                Console.WriteLine("Done setting up new service owner in Gitea!");
+            }
+        }
+
+        private static async Task<bool> CreateRepoWithPrefix(GiteaService giteaService, Organisation org, string repoName)
+        {
             var createRepoForOrgsCommandHandler = new CreateRepoForOrgsCommandHandler(giteaService);
-            var numberOfReposCreated = await createRepoForOrgsCommandHandler.Handle(new CreateRepoForOrgsCommand(new List<string>() { org.Username }, "datamodels", true));
+            var numberOfReposCreated = await createRepoForOrgsCommandHandler.Handle(new CreateRepoForOrgsCommand([org.Username],  repoName, true));
             if (numberOfReposCreated != 1)
             {
-                Console.WriteLine($"Could not create default datamodels repository");
-                return;
+                Console.WriteLine($"Could not create default {repoName} repository for {org.Fullname}");
+                return false;
             }
             else
             {
-                Console.WriteLine($"Created default datamodels repository for {org.Fullname}.");
+                Console.WriteLine($"Created default {repoName} repository for {org.Fullname}");
+                return true;
             }
-
-            Console.WriteLine("Done setting up new serivce owner in Gitea!");
         }
     }
 }
