@@ -28,7 +28,7 @@ public sealed class AppsAnalyzer
         table.AddColumn(new TableColumn(""));
         table.AddColumn(new TableColumn(""));
 
-        _parallelism = Math.Min(Constants.LimitMaxParallelism, _config.MaxParallelism);
+        _parallelism = _config.MaxParallelism;
         var directory = Path.GetFullPath(
             _config.Directory.Replace(
                 "~",
